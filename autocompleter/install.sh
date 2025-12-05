@@ -107,23 +107,60 @@ _cmvault_fetch_suggestions() {
 
 _cmvault_show_suggestion() {
     local suggestion="${_cmvault_suggestions[$_cmvault_index]}"
+    local total=${#_cmvault_suggestions[@]}
     
-    # Remove the part of suggestion that matches buffer
-    local remaining=${suggestion#$BUFFER}
-    
-    if [[ -n "$remaining" ]]; then
-         if [[ "$suggestion" == "$BUFFER"* ]]; then
-             # Inline suggestion
-             POSTDISPLAY="${remaining}"
-             # Color it gray (fg=8)
-             region_highlight=("P${#BUFFER} ${#suggestion} fg=8")
-         else
-             # Below suggestion
-             POSTDISPLAY=$'\n  > '$suggestion
-         fi
-    else
-        POSTDISPLAY=""
+    # 1. Inline part (only if prefix matches)
+    local remaining=""
+    if [[ "$suggestion" == "$BUFFER"* ]]; then
+        remaining=${suggestion#$BUFFER}
     fi
+    
+    local output="$remaining"
+    
+    # Reset highlights
+    region_highlight=()
+    
+    # Highlight inline part (gray)
+    if [[ -n "$remaining" ]]; then
+        region_highlight+=("P0 ${#remaining} fg=8")
+    fi
+    
+    # 2. List below
+    output+=$'\n'
+    local current_len=${#output} # Length so far (including newline)
+    
+    for ((i=1; i<=total; i++)); do
+        local item="${_cmvault_suggestions[$i]}"
+        local line=""
+        local is_selected=0
+        
+        if [[ $i -eq $_cmvault_index ]]; then
+            line="> $item"
+            is_selected=1
+        else
+            line="  $item"
+        fi
+        
+        output+="$line"
+        local line_len=${#line}
+        
+        # Highlight logic
+        if [[ $is_selected -eq 1 ]]; then
+            # Cyan for selected
+            region_highlight+=("P${current_len} $((current_len + line_len)) fg=6")
+        else
+            # Gray for others
+            region_highlight+=("P${current_len} $((current_len + line_len)) fg=8")
+        fi
+        
+        output+=$'\n'
+        ((current_len += line_len + 1))
+    done
+    
+    # Strip last newline
+    output="${output%$'\n'}"
+    
+    POSTDISPLAY="$output"
 }
 
 # ZLE Widget
@@ -194,6 +231,18 @@ _cmvault_self_insert() {
     _cmvault_autosuggest
 }
 zle -N self-insert _cmvault_self_insert
+
+_cmvault_backward_delete_char() {
+    zle .backward-delete-char
+    _cmvault_autosuggest
+}
+zle -N backward-delete-char _cmvault_backward_delete_char
+
+_cmvault_vi_backward_delete_char() {
+    zle .vi-backward-delete-char
+    _cmvault_autosuggest
+}
+zle -N vi-backward-delete-char _cmvault_vi_backward_delete_char
 
 # Key bindings
 # Key bindings
