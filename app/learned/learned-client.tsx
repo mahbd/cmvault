@@ -2,12 +2,29 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Trash2, ArrowUpRight, Terminal } from "lucide-react"
 import { deleteLearnedCommand } from "@/app/actions/learned"
 import { toast } from "sonner"
 import { CreateCommandForm } from "@/components/create-command-form"
 import { formatDistanceToNow } from "date-fns"
+import { Badge } from "@/components/ui/badge"
+
+// Helper to parse context
+const getContextDirs = (contextStr: string | null) => {
+    if (!contextStr) return []
+    try {
+        const context = JSON.parse(contextStr)
+        // Sort by count desc if available, or just return
+        return context
+            .sort((a: any, b: any) => (b.count || 0) - (a.count || 0))
+            .map((c: any) => c.directory)
+            .filter(Boolean)
+            .slice(0, 10) // Limit to top 5 directories
+    } catch (e) {
+        return []
+    }
+}
 
 interface LearnedClientProps {
     initialCommands: any[]
@@ -31,7 +48,6 @@ export function LearnedClient({ initialCommands, session }: LearnedClientProps) 
     const handlePromoteSuccess = async (commandId: string) => {
         // After successful promotion, delete the learned entry
         if (promotingCommand) {
-            await handleDelete(promotingCommand.id)
             setPromotingCommand(null)
             toast.success("Command promoted and removed from learned list")
         }
@@ -79,11 +95,17 @@ export function LearnedClient({ initialCommands, session }: LearnedClientProps) 
                                             {cmd.command}
                                         </code>
                                     </div>
-                                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                    <div className="flex items-center gap-4 text-xs text-muted-foreground mb-2">
                                         <span>{cmd.os || "Unknown OS"}</span>
                                         <span>•</span>
                                         <span>Last used {formatDistanceToNow(new Date(cmd.updatedAt), { addSuffix: true })}</span>
-                                        {/* Parse context to show usage count if needed, but simple is fine for now */}
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {getContextDirs(cmd.context).map((dir: string, i: number) => (
+                                            <Badge key={i} variant="secondary" className="text-[10px] px-1.5 py-0.5 font-mono font-normal text-muted-foreground bg-muted/50 hover:bg-muted">
+                                                {dir}
+                                            </Badge>
+                                        ))}
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

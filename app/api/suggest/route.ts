@@ -17,35 +17,45 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { query, os, pwd } = body
+    const { query, os: platform, pwd } = body as { query: string, os: string, pwd: string }
 
     if (!query) {
         return NextResponse.json([])
     }
 
-    // Simple fuzzy search for now
-    const commands = await prisma.command.findMany({
-        where: {
-            userId: user.id,
+    // Split query into terms for multi-word matching
+    const terms = query.trim().split(/\s+/).filter(t => t.length > 0)
+
+    if (terms.length === 0) {
+        return NextResponse.json([])
+    }
+
+    const where: any = {
+        userId: user.id,
+        AND: terms.map(term => ({
             OR: [
-                { text: { contains: query } },
-                { title: { contains: query } },
-                { description: { contains: query } },
-            ],
-        },
-        take: 10,
+                { text: { contains: term } },
+            ]
+        }))
+    }
+
+    // Filter by OS if provided
+    if (platform) {
+        where.AND.push({
+            OR: [
+                { platform: { contains: platform.toLowerCase() } },
+                { platform: { contains: "others" } },
+                // If platform is empty string, consider it valid for all
+                { platform: { equals: "" } }
+            ]
+        })
+    }
+
+    const commands = await prisma.command.findMany({
+        where,
+        take: 20,
         orderBy: { usageCount: "desc" },
     })
 
-    // Filter by OS if possible (simple string match for now)
-    const relevantCommands = commands.filter(cmd => {
-        if (!cmd.platform) return true
-        if (cmd.platform.toLowerCase().includes("others")) return true
-        if (os && cmd.platform.toLowerCase().includes(os.toLowerCase())) return true
-        return false
-    })
-
-    const finalCommands = relevantCommands.length > 0 ? relevantCommands : commands
-
-    return NextResponse.json(finalCommands.map(c => c.text))
+    return NextResponse.json(commands.map(c => c.text))
 }
