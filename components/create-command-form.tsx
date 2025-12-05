@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -52,6 +52,29 @@ export function CreateCommandForm({ onCancel, onSuccess, onSearch }: CreateComma
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
     const [tags, setTags] = useState<string[]>([])
     const [isPublic, setIsPublic] = useState(false)
+    const formRef = useRef<HTMLFormElement>(null)
+    const platformButtonRef = useRef<HTMLButtonElement>(null)
+
+    useEffect(() => {
+        const saved = localStorage.getItem("lastSelectedPlatforms")
+        if (saved) {
+            try {
+                setSelectedPlatforms(JSON.parse(saved))
+            } catch (e) {
+                // Ignore error
+            }
+        }
+    }, [])
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                onCancel()
+            }
+        }
+        document.addEventListener("keydown", handleKeyDown)
+        return () => document.removeEventListener("keydown", handleKeyDown)
+    }, [onCancel])
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
@@ -76,16 +99,32 @@ export function CreateCommandForm({ onCancel, onSuccess, onSearch }: CreateComma
         }
     }
 
+    const handleFormKeyDown = (e: React.KeyboardEvent) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+            e.preventDefault()
+            formRef.current?.requestSubmit()
+        }
+    }
+
+    const handleTitleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === "Enter") {
+            e.preventDefault()
+            platformButtonRef.current?.focus()
+        }
+    }
+
     const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         onSearch(e.target.value)
     }
 
     const togglePlatform = (value: string) => {
-        setSelectedPlatforms(prev =>
-            prev.includes(value)
+        setSelectedPlatforms(prev => {
+            const newPlatforms = prev.includes(value)
                 ? prev.filter(p => p !== value)
                 : [...prev, value]
-        )
+            localStorage.setItem("lastSelectedPlatforms", JSON.stringify(newPlatforms))
+            return newPlatforms
+        })
     }
 
     return (
@@ -97,15 +136,28 @@ export function CreateCommandForm({ onCancel, onSuccess, onSearch }: CreateComma
                 </Button>
             </CardHeader>
             <CardContent className="p-3">
-                <form onSubmit={handleSubmit} className="grid gap-3">
+                <form
+                    ref={formRef}
+                    onSubmit={handleSubmit}
+                    onKeyDown={handleFormKeyDown}
+                    className="grid gap-3"
+                >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="grid gap-1.5">
-                            <Input id="title" name="title" placeholder="Title (e.g. List files)" className="h-8 text-sm" />
+                            <Input
+                                id="title"
+                                name="title"
+                                placeholder="Title (e.g. List files)"
+                                className="h-8 text-sm"
+                                autoFocus
+                                onKeyDown={handleTitleKeyDown}
+                            />
                         </div>
                         <div className="grid gap-1.5">
                             <Popover open={platformOpen} onOpenChange={setPlatformOpen}>
                                 <PopoverTrigger asChild>
                                     <Button
+                                        ref={platformButtonRef}
                                         variant="outline"
                                         role="combobox"
                                         aria-expanded={platformOpen}
@@ -192,7 +244,7 @@ export function CreateCommandForm({ onCancel, onSuccess, onSearch }: CreateComma
 
                     <div className="flex justify-end gap-2 pt-1">
                         <Button type="button" variant="outline" size="sm" onClick={onCancel} className="h-7 text-xs">Cancel</Button>
-                        <Button type="submit" size="sm" disabled={loading || selectedPlatforms.length === 0} className="h-7 text-xs">Save</Button>
+                        <Button type="submit" size="sm" disabled={loading} className="h-7 text-xs">Save</Button>
                     </div>
                 </form>
             </CardContent>
