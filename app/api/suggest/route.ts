@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
                 { description: { contains: query } },
             ],
         },
-        take: 5,
+        take: 10,
         orderBy: { usageCount: "desc" },
     })
 

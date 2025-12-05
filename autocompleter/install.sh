@@ -7,24 +7,59 @@ echo "Installing CMVault Autocompleter..."
 # Create config directory
 mkdir -p ~/.config/cmvault
 
+CONFIG_DIR="$HOME/.config/cmvault"
+TOKEN_FILE="$CONFIG_DIR/token"
+URL_FILE="$CONFIG_DIR/url"
+
+# Read existing config if available
+EXISTING_TOKEN=""
+if [[ -f "$TOKEN_FILE" ]]; then
+    EXISTING_TOKEN=$(cat "$TOKEN_FILE")
+fi
+
+EXISTING_URL="https://cmd.mahmudul.com.bd"
+if [[ -f "$URL_FILE" ]]; then
+    EXISTING_URL=$(cat "$URL_FILE")
+fi
+
 # Ask for API Token
-read -p "Enter your CMVault API Token: " TOKEN
+if [[ -n "$EXISTING_TOKEN" ]]; then
+    read -p "Enter your CMVault API Token (Press Enter to keep existing): " TOKEN
+    TOKEN=${TOKEN:-$EXISTING_TOKEN}
+else
+    read -p "Enter your CMVault API Token: " TOKEN
+fi
 
 if [[ -z "$TOKEN" ]]; then
     echo "Token cannot be empty."
     exit 1
 fi
 
-echo "$TOKEN" > ~/.config/cmvault/token
-chmod 600 ~/.config/cmvault/token
+echo "$TOKEN" > "$TOKEN_FILE"
+chmod 600 "$TOKEN_FILE"
 
-# Create plugin file
 # Ask for API URL
-read -p "Enter your CMVault API URL (default: http://localhost:3000): " API_URL
-API_URL=${API_URL:-http://localhost:3000}
+read -p "Enter your CMVault API URL (default: $EXISTING_URL): " API_URL
+API_URL=${API_URL:-$EXISTING_URL}
 
-echo "$API_URL" > ~/.config/cmvault/url
-chmod 600 ~/.config/cmvault/url
+echo "$API_URL" > "$URL_FILE"
+chmod 600 "$URL_FILE"
+
+LEARN_FILE="$CONFIG_DIR/learn"
+EXISTING_LEARN="true"
+if [[ -f "$LEARN_FILE" ]]; then
+    EXISTING_LEARN=$(cat "$LEARN_FILE")
+fi
+
+read -p "Enable learning mode? (captures executed commands) [Y/n]: " ENABLE_LEARN
+ENABLE_LEARN=${ENABLE_LEARN:-"y"}
+
+if [[ "$ENABLE_LEARN" =~ ^[Yy]$ ]]; then
+    echo "true" > "$LEARN_FILE"
+else
+    echo "false" > "$LEARN_FILE"
+fi
+chmod 600 "$LEARN_FILE"
 
 # Create plugin file
 cat << 'EOF' > ~/.config/cmvault/cmvault-plugin.zsh
@@ -33,6 +68,7 @@ cat << 'EOF' > ~/.config/cmvault/cmvault-plugin.zsh
 # Configuration
 CMVAULT_URL_FILE="${HOME}/.config/cmvault/url"
 CMVAULT_TOKEN_FILE="${HOME}/.config/cmvault/token"
+CMVAULT_LEARN_FILE="${HOME}/.config/cmvault/learn"
 
 # Ensure config files exist
 if [[ ! -f "$CMVAULT_URL_FILE" ]] || [[ ! -f "$CMVAULT_TOKEN_FILE" ]]; then
@@ -43,80 +79,115 @@ fi
 CMVAULT_API_URL=$(cat "$CMVAULT_URL_FILE")
 CMVAULT_TOKEN=$(cat "$CMVAULT_TOKEN_FILE")
 
-# Suggestion fetcher function (runs in background)
+# State variables
+_cmvault_suggestions=()
+_cmvault_index=1
+
+# Suggestion fetcher function
 _cmvault_fetch_suggestions() {
     local query="$1"
     local os=$(uname -s)
     local pwd="$PWD"
     
-    # Debounce: only fetch if query length > 1
-    if [[ ${#query} -lt 2 ]]; then
+    # Debounce: only fetch if query length > 0
+    if [[ ${#query} -lt 1 ]]; then
         return
     fi
 
     # API Request
-    # Using curl with timeout to ensure zero-blocking feel (though this is still sync in subshell)
-    # Ideally we'd use zsh/zpty or a daemon, but for MVP we use short timeout
     local suggestions=$(curl -s --max-time 0.2 -X POST "${CMVAULT_API_URL}/api/suggest" \
         -H "Authorization: Bearer ${CMVAULT_TOKEN}" \
         -H "Content-Type: application/json" \
         -d "{\"query\": \"$query\", \"os\": \"$os\", \"pwd\": \"$pwd\"}")
 
-    # Parse JSON (simple parsing for MVP, assuming simple array)
-    # Remove brackets and quotes
-    echo "$suggestions" | sed 's/[][]//g' | sed 's/"//g' | tr ',' '\n'
+    # Parse JSON array of strings
+    # Extract strings inside quotes and remove quotes
+    echo "$suggestions" | grep -o '"[^"]*"' | tr -d '"'
+}
+
+_cmvault_show_suggestion() {
+    local suggestion="${_cmvault_suggestions[$_cmvault_index]}"
+    
+    # Remove the part of suggestion that matches buffer
+    local remaining=${suggestion#$BUFFER}
+    
+    if [[ -n "$remaining" ]]; then
+         if [[ "$suggestion" == "$BUFFER"* ]]; then
+             # Inline suggestion
+             POSTDISPLAY="${remaining}"
+             # Color it gray (fg=8)
+             region_highlight=("P${#BUFFER} ${#suggestion} fg=8")
+         else
+             # Below suggestion
+             POSTDISPLAY=$'\n  > '$suggestion
+         fi
+    else
+        POSTDISPLAY=""
+    fi
 }
 
 # ZLE Widget
 _cmvault_autosuggest() {
     # Only suggest if buffer is not empty
     if [[ -n "$BUFFER" ]]; then
-        # Fetch suggestions (this is blocking for 0.2s max, which might be noticeable)
-        # For true async, we need a more complex setup (coproc or zpty)
-        # For now, let's try this.
+        # Fetch suggestions into array (split by newline)
+        _cmvault_suggestions=("${(@f)$(_cmvault_fetch_suggestions "$BUFFER")}")
+        _cmvault_index=1
         
-        # To avoid blocking typing, we might only trigger on specific keys or idle
-        # But requirement is "As-You-Type".
-        
-        # Optimization: Check if we have a cached suggestion for this prefix?
-        
-        local suggestion=$(_cmvault_fetch_suggestions "$BUFFER" | head -n 1)
-        
-        if [[ -n "$suggestion" ]]; then
-            # Display ghost text
-            # This is tricky in pure Zsh without a plugin like zsh-autosuggestions
-            # We can use POSTDISPLAY
-            
-            # Remove the part of suggestion that matches buffer
-            local remaining=${suggestion#$BUFFER}
-            
-            if [[ -n "$remaining" ]]; then
-                POSTDISPLAY=$'\n'"  $suggestion"
-                # Or inline: POSTDISPLAY=" $remaining" (dimmed)
-                # Let's try inline first if it matches prefix
-                if [[ "$suggestion" == "$BUFFER"* ]]; then
-                     POSTDISPLAY="${remaining}"
-                     # Color it gray (fg=8)
-                     region_highlight=("P${#BUFFER} ${#suggestion} fg=8")
-                else
-                     # If not a prefix match, show below
-                     POSTDISPLAY=$'\n  > '$suggestion
-                fi
-            else
-                POSTDISPLAY=""
-            fi
+        if [[ ${#_cmvault_suggestions[@]} -gt 0 ]]; then
+            _cmvault_show_suggestion
         else
             POSTDISPLAY=""
         fi
     else
         POSTDISPLAY=""
+        _cmvault_suggestions=()
+    fi
+}
+
+_cmvault_cycle_up() {
+    if [[ -n "$POSTDISPLAY" ]] && [[ ${#_cmvault_suggestions[@]} -gt 1 ]]; then
+        ((_cmvault_index--))
+        if [[ $_cmvault_index -lt 1 ]]; then
+            _cmvault_index=${#_cmvault_suggestions[@]}
+        fi
+        _cmvault_show_suggestion
+    else
+        zle .up-line-or-history
+    fi
+}
+
+_cmvault_cycle_down() {
+    if [[ -n "$POSTDISPLAY" ]] && [[ ${#_cmvault_suggestions[@]} -gt 1 ]]; then
+        ((_cmvault_index++))
+        if [[ $_cmvault_index -gt ${#_cmvault_suggestions[@]} ]]; then
+            _cmvault_index=1
+        fi
+        _cmvault_show_suggestion
+    else
+        zle .down-line-or-history
+    fi
+}
+
+_cmvault_accept() {
+    if [[ -n "$POSTDISPLAY" ]]; then
+        local suggestion="${_cmvault_suggestions[$_cmvault_index]}"
+        if [[ -n "$suggestion" ]]; then
+            BUFFER="$suggestion"
+            CURSOR=${#BUFFER}
+        fi
+        POSTDISPLAY=""
+        _cmvault_suggestions=()
+    else
+        zle .forward-char
     fi
 }
 
 # Hook into ZLE
 zle -N _cmvault_autosuggest
-# We need to hook this into self-insert, but that can be heavy.
-# Let's hook it to a key for testing first, or wrap self-insert.
+zle -N _cmvault_cycle_up
+zle -N _cmvault_cycle_down
+zle -N _cmvault_accept
 
 _cmvault_self_insert() {
     zle .self-insert
@@ -124,34 +195,42 @@ _cmvault_self_insert() {
 }
 zle -N self-insert _cmvault_self_insert
 
-# Key binding to accept suggestion (Right Arrow)
-_cmvault_accept() {
-    if [[ -n "$POSTDISPLAY" ]]; then
-        # If inline
-        if [[ "$POSTDISPLAY" != $'\n'* ]]; then
-            BUFFER="${BUFFER}${POSTDISPLAY}"
-            CURSOR=${#BUFFER}
-            POSTDISPLAY=""
-        fi
-    else
-        zle .forward-char
-    fi
-}
-zle -N _cmvault_accept
-bindkey '^[[C' _cmvault_accept # Right Arrow
+# Key bindings
+# Key bindings
+bindkey '^[[1;5A' _cmvault_cycle_up   # Ctrl + Up Arrow
+bindkey '^[[1;5B' _cmvault_cycle_down # Ctrl + Down Arrow
+bindkey '^[[C' _cmvault_accept        # Right Arrow
+bindkey '^[OC' _cmvault_accept        # Right Arrow (alternative)
 
-# Post-execution hook
+# Ensure bindings work in both emacs and vi modes
+bindkey -M emacs '^[[1;5A' _cmvault_cycle_up
+bindkey -M emacs '^[[1;5B' _cmvault_cycle_down
+bindkey -M emacs '^[[C' _cmvault_accept
+bindkey -M emacs '^[OC' _cmvault_accept
+
+bindkey -M viins '^[[1;5A' _cmvault_cycle_up
+bindkey -M viins '^[[1;5B' _cmvault_cycle_down
+bindkey -M viins '^[[C' _cmvault_accept
+bindkey -M viins '^[OC' _cmvault_accept
+
+# Post-execution hook for learning
 _cmvault_preexec() {
+    # Check if learning is enabled
+    if [[ -f "$CMVAULT_LEARN_FILE" ]]; then
+        local learn_enabled=$(cat "$CMVAULT_LEARN_FILE")
+        if [[ "$learn_enabled" != "true" ]]; then
+            return
+        fi
+    fi
+
     local cmd="$1"
     local os=$(uname -s)
     local pwd="$PWD"
     
-    # Capture ls output (limit to first 20 lines to avoid huge payload)
+    # Capture ls output (limit to first 20 lines)
     local ls_output=$(ls -1 2>/dev/null | head -n 20)
-    # Escape newlines for JSON
     ls_output="${ls_output//$'\n'/\\n}"
     
-    # Send to /api/learn in background
     (curl -s -X POST "${CMVAULT_API_URL}/api/learn" \
         -H "Authorization: Bearer ${CMVAULT_TOKEN}" \
         -H "Content-Type: application/json" \
