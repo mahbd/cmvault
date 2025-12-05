@@ -39,6 +39,11 @@ const items = [
         icon: Search,
     },
     {
+        title: "Learned",
+        url: "/learned",
+        icon: Command,
+    },
+    {
         title: "Settings",
         url: "/settings",
         icon: Settings,

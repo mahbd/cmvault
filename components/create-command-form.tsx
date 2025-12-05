@@ -44,9 +44,10 @@ interface CreateCommandFormProps {
     onCancel: () => void
     onSuccess: () => void
     onSearch: (query: string) => void
+    initialText?: string
 }
 
-export function CreateCommandForm({ onCancel, onSuccess, onSearch }: CreateCommandFormProps) {
+export function CreateCommandForm({ onCancel, onSuccess, onSearch, initialText }: CreateCommandFormProps) {
     const [loading, setLoading] = useState(false)
     const [platformOpen, setPlatformOpen] = useState(false)
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
@@ -212,6 +213,7 @@ export function CreateCommandForm({ onCancel, onSuccess, onSearch }: CreateComma
                             required
                             placeholder="Command (e.g. ls -la)"
                             onChange={handleTextChange}
+                            defaultValue={initialText}
                         />
                     </div>
 
