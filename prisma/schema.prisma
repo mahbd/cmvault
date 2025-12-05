@@ -138,10 +138,12 @@ model CommandUsage {
   id        String   @id @default(cuid())
   command   String
   os        String?
-  pwd       String?
   context   String? // JSON string of directory context
-  userId    String?
+  userId    String
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   
-  user      User?    @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, command])
 }

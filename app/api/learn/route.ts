@@ -1,6 +1,13 @@
 import { prisma } from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
 
+interface ContextEntry {
+    directory: string
+    time: number
+    count: number
+    lsOutput: string
+}
+
 export async function POST(req: NextRequest) {
     const authHeader = req.headers.get("Authorization")
     if (!authHeader?.startsWith("Bearer ")) {
@@ -17,23 +24,72 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { executed_command, os, pwd, directory_context } = body
+    const { executed_command, os, pwd, ls_output } = body
 
     if (!executed_command) {
         return NextResponse.json({ error: "Missing command" }, { status: 400 })
     }
 
-    await prisma.commandUsage.create({
-        data: {
-            command: executed_command,
-            os,
-            pwd,
-            context: JSON.stringify(directory_context),
-            userId: user.id,
+    // Find existing usage
+    const existingUsage = await prisma.commandUsage.findUnique({
+        where: {
+            userId_command: {
+                userId: user.id,
+                command: executed_command,
+            },
         },
     })
 
-    // Increment usage count if this command exists in user's vault
+    let context: ContextEntry[] = []
+    if (existingUsage?.context) {
+        try {
+            context = JSON.parse(existingUsage.context)
+        } catch (e) {
+            context = []
+        }
+    }
+
+    const currentTime = Date.now()
+    const existingEntryIndex = context.findIndex(entry => entry.directory === pwd)
+
+    if (existingEntryIndex !== -1) {
+        // Update existing entry
+        context[existingEntryIndex].count += 1
+        context[existingEntryIndex].time = currentTime
+        // Replace ls output if provided (assuming latest is best)
+        if (ls_output) {
+            context[existingEntryIndex].lsOutput = ls_output
+        }
+    } else {
+        // Add new entry
+        context.push({
+            directory: pwd || "",
+            time: currentTime,
+            count: 1,
+            lsOutput: ls_output || ""
+        })
+    }
+
+    await prisma.commandUsage.upsert({
+        where: {
+            userId_command: {
+                userId: user.id,
+                command: executed_command,
+            },
+        },
+        update: {
+            context: JSON.stringify(context),
+            os: os || existingUsage?.os, // Update OS if provided
+        },
+        create: {
+            command: executed_command,
+            userId: user.id,
+            os,
+            context: JSON.stringify(context),
+        },
+    })
+
+    // Increment usage count in Command table if it exists
     const existingCommand = await prisma.command.findFirst({
         where: {
             userId: user.id,

@@ -146,11 +146,16 @@ _cmvault_preexec() {
     local os=$(uname -s)
     local pwd="$PWD"
     
+    # Capture ls output (limit to first 20 lines to avoid huge payload)
+    local ls_output=$(ls -1 2>/dev/null | head -n 20)
+    # Escape newlines for JSON
+    ls_output="${ls_output//$'\n'/\\n}"
+    
     # Send to /api/learn in background
     (curl -s -X POST "${CMVAULT_API_URL}/api/learn" \
         -H "Authorization: Bearer ${CMVAULT_TOKEN}" \
         -H "Content-Type: application/json" \
-        -d "{\"executed_command\": \"$cmd\", \"os\": \"$os\", \"pwd\": \"$pwd\", \"directory_context\": []}" &) >/dev/null 2>&1
+        -d "{\"executed_command\": \"$cmd\", \"os\": \"$os\", \"pwd\": \"$pwd\", \"ls_output\": \"$ls_output\"}" &) >/dev/null 2>&1
 }
 autoload -U add-zsh-hook
 add-zsh-hook preexec _cmvault_preexec
