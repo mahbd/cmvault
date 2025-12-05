@@ -8,26 +8,26 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   name          String?
-  email         String    @unique
+  email         String   @unique
   emailVerified Boolean?
   image         String?
-  role          String    @default("USER")
-  
-  sessions      Session[]
-  accounts      Account[]
+  role          String   @default("USER")
 
-  commands      Command[]
-  categories    Category[]
+  sessions Session[]
+  accounts Account[]
+
+  commands Command[]
+
   tags          Tag[]
   commandUsages CommandUsage[]
 
-  apiToken      String?   @unique
+  apiToken String? @unique
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("users")
 }
 
@@ -47,69 +47,56 @@ model Session {
 }
 
 model Account {
-  id           String    @id @default(cuid())
-  userId       String
-  accountId    String
-  providerId   String
-  accessToken  String?
-  refreshToken String?
-  accessTokenExpiresAt DateTime?
+  id                    String    @id @default(cuid())
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
   refreshTokenExpiresAt DateTime?
-  scope        String?
-  idToken      String?
-  password     String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scope                 String?
+  idToken               String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("accounts")
 }
 
 model Verification {
-  id         String    @id @default(cuid())
+  id         String   @id @default(cuid())
   identifier String
   value      String
   expiresAt  DateTime
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-  
+
   @@map("verifications")
 }
 
 model Command {
-  id          String    @id @default(cuid())
+  id          String  @id @default(cuid())
   title       String?
   text        String
   description String?
   platform    String
-  visibility  String    @default("PRIVATE")
-  favorite    Boolean   @default(false)
-  usageCount  Int       @default(0)
+  visibility  String  @default("PRIVATE")
+  favorite    Boolean @default(false)
+  usageCount  Int     @default(0)
 
-  categoryId  String?
-  userId      String
+  userId String
 
-  tags        CommandTag[]
+  tags CommandTag[]
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user        User     @relation(fields: [userId], references: [id])
-  category    Category? @relation(fields: [categoryId], references: [id])
-  
+  user User @relation(fields: [userId], references: [id])
+
   @@map("commands")
-}
-
-model Category {
-  id       String    @id @default(cuid())
-  name     String
-  userId   String
-  commands Command[]
-  
-  user     User      @relation(fields: [userId], references: [id])
-  
-  @@map("categories")
 }
 
 model Tag {
@@ -117,9 +104,9 @@ model Tag {
   name     String
   userId   String
   commands CommandTag[]
-  
-  user     User      @relation(fields: [userId], references: [id])
-  
+
+  user User @relation(fields: [userId], references: [id])
+
   @@map("tags")
 }
 
@@ -127,8 +114,8 @@ model CommandTag {
   commandId String
   tagId     String
 
-  command   Command @relation(fields: [commandId], references: [id])
-  tag       Tag     @relation(fields: [tagId], references: [id])
+  command Command @relation(fields: [commandId], references: [id])
+  tag     Tag     @relation(fields: [tagId], references: [id])
 
   @@id([commandId, tagId])
   @@map("command_tags")
@@ -142,8 +129,8 @@ model CommandUsage {
   userId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
-  user      User     @relation(fields: [userId], references: [id])
+
+  user User @relation(fields: [userId], references: [id])
 
   @@unique([userId, command])
 }

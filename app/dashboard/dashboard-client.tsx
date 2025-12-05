@@ -10,12 +10,11 @@ import Link from "next/link"
 
 interface DashboardClientProps {
     initialCommands: any[]
-    categories: any[]
     session: any
     initialQuery?: string
 }
 
-export function DashboardClient({ initialCommands, categories, session, initialQuery = "" }: DashboardClientProps) {
+export function DashboardClient({ initialCommands, session, initialQuery = "" }: DashboardClientProps) {
     const [query, setQuery] = useState(initialQuery)
     const [isAdding, setIsAdding] = useState(false)
     const searchInputRef = useRef<HTMLInputElement>(null)

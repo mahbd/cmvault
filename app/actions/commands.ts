@@ -13,7 +13,7 @@ const commandSchema = z.object({
     platform: z.string().min(1, "Platform is required"),
     visibility: z.enum(["PUBLIC", "PRIVATE"]),
     tags: z.array(z.string()).optional(),
-    categoryId: z.string().optional(),
+
 })
 
 export async function createCommand(data: z.infer<typeof commandSchema>) {
