@@ -21,6 +21,9 @@ model User {
   commands      Command[]
   categories    Category[]
   tags          Tag[]
+  commandUsages CommandUsage[]
+
+  apiToken      String?   @unique
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -129,4 +132,16 @@ model CommandTag {
 
   @@id([commandId, tagId])
   @@map("command_tags")
+}
+
+model CommandUsage {
+  id        String   @id @default(cuid())
+  command   String
+  os        String?
+  pwd       String?
+  context   String? // JSON string of directory context
+  userId    String?
+  createdAt DateTime @default(now())
+  
+  user      User?    @relation(fields: [userId], references: [id])
 }

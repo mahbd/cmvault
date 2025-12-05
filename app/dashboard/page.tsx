@@ -1,24 +1,24 @@
+import { auth } from "@/lib/auth"
 import { getCommands } from "@/app/actions/commands"
 import { getCategories } from "@/app/actions/categories"
-import { auth } from "@/lib/auth"
-import { headers } from "next/headers"
 import { DashboardClient } from "./dashboard-client"
 
-export default async function Dashboard({ searchParams }: { searchParams: { q?: string } }) {
+import { headers } from "next/headers"
+
+export default async function DashboardPage() {
     const session = await auth.api.getSession({
         headers: await headers()
     })
-
-    const query = (await searchParams).q || ""
     const commands = await getCommands()
-    const categories = session ? await getCategories() : []
+    const categories = await getCategories()
 
     return (
-        <DashboardClient
-            initialCommands={commands}
-            categories={categories}
-            session={session}
-            initialQuery={query}
-        />
+        <div className="container mx-auto -mt-5">
+            <DashboardClient
+                initialCommands={commands}
+                categories={categories}
+                session={session}
+            />
+        </div>
     )
 }
