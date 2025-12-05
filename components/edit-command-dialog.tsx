@@ -52,7 +52,7 @@ interface Command {
     text: string
     description: string | null
     platform: string
-    visibility: "PUBLIC" | "PRIVATE"
+    visibility: string
     tags: { tag: { name: string } }[]
 }
 

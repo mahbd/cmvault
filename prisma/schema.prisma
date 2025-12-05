@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -13,7 +13,7 @@ model User {
   email         String    @unique
   emailVerified Boolean?
   image         String?
-  role          Role      @default(USER)
+  role          String    @default("USER")
   
   sessions      Session[]
   accounts      Account[]
@@ -74,20 +74,13 @@ model Verification {
   @@map("verifications")
 }
 
-enum Role {
-  USER
-  MODERATOR
-  ADMIN
-  BLOCKED
-}
-
 model Command {
   id          String    @id @default(cuid())
   title       String?
   text        String
   description String?
   platform    String
-  visibility  Visibility @default(PRIVATE)
+  visibility  String    @default("PRIVATE")
   favorite    Boolean   @default(false)
   usageCount  Int       @default(0)
 
@@ -103,11 +96,6 @@ model Command {
   category    Category? @relation(fields: [categoryId], references: [id])
   
   @@map("commands")
-}
-
-enum Visibility {
-  PUBLIC
-  PRIVATE
 }
 
 model Category {
