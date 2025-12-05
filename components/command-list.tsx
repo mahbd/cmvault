@@ -42,7 +42,13 @@ export function CommandList({ commands, readOnly = false }: { commands: Command[
                             <CardTitle className="text-base font-medium">
                                 {command.title || command.text.slice(0, 20)}
                             </CardTitle>
-                            <CardDescription>{command.platform}</CardDescription>
+                            <CardDescription className="flex gap-1 flex-wrap">
+                                {command.platform.split(",").filter(Boolean).map(p => (
+                                    <Badge key={p} variant="outline" className="text-[10px] px-1 py-0 h-5">
+                                        {p}
+                                    </Badge>
+                                ))}
+                            </CardDescription>
                         </div>
                         <div className="flex gap-2">
                             <Button variant="ghost" size="icon" onClick={() => handleCopy(command.text)}>

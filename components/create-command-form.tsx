@@ -2,21 +2,12 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { updateCommand } from "@/app/actions/edit-command"
+import { createCommand } from "@/app/actions/commands"
 import { toast } from "sonner"
-import { Pencil, Check, ChevronsUpDown, Globe, Lock } from "lucide-react"
+import { Check, ChevronsUpDown, Globe, Lock, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
     Command,
@@ -32,6 +23,7 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover"
 import { Switch } from "@/components/ui/switch"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TagInput } from "@/components/tag-input"
 import { Badge } from "@/components/ui/badge"
 
@@ -48,23 +40,18 @@ const platforms = [
     { value: "others", label: "Others" },
 ]
 
-interface Command {
-    id: string
-    title: string | null
-    text: string
-    description: string | null
-    platform: string
-    visibility: string
-    tags: { tag: { name: string } }[]
+interface CreateCommandFormProps {
+    onCancel: () => void
+    onSuccess: () => void
+    onSearch: (query: string) => void
 }
 
-export function EditCommandDialog({ command }: { command: Command }) {
-    const [open, setOpen] = useState(false)
+export function CreateCommandForm({ onCancel, onSuccess, onSearch }: CreateCommandFormProps) {
     const [loading, setLoading] = useState(false)
     const [platformOpen, setPlatformOpen] = useState(false)
-    const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(command.platform.split(",").filter(Boolean))
-    const [tags, setTags] = useState<string[]>(command.tags.map(t => t.tag.name))
-    const [isPublic, setIsPublic] = useState(command.visibility === "PUBLIC")
+    const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
+    const [tags, setTags] = useState<string[]>([])
+    const [isPublic, setIsPublic] = useState(false)
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
@@ -72,7 +59,7 @@ export function EditCommandDialog({ command }: { command: Command }) {
         const formData = new FormData(e.currentTarget)
 
         try {
-            await updateCommand(command.id, {
+            await createCommand({
                 title: formData.get("title") as string,
                 text: formData.get("text") as string,
                 description: formData.get("description") as string,
@@ -80,13 +67,17 @@ export function EditCommandDialog({ command }: { command: Command }) {
                 visibility: isPublic ? "PUBLIC" : "PRIVATE",
                 tags: tags
             })
-            toast.success("Command updated")
-            setOpen(false)
+            toast.success("Command created")
+            onSuccess()
         } catch (error) {
-            toast.error("Failed to update command")
+            toast.error("Failed to create command")
         } finally {
             setLoading(false)
         }
+    }
+
+    const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        onSearch(e.target.value)
     }
 
     const togglePlatform = (value: string) => {
@@ -98,23 +89,18 @@ export function EditCommandDialog({ command }: { command: Command }) {
     }
 
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-                <Button variant="ghost" size="icon">
-                    <Pencil className="h-4 w-4" />
+        <Card className="border-2 border-primary/20 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 pb-0">
+                <CardTitle className="text-sm font-medium">Add New Command</CardTitle>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onCancel}>
+                    <X className="h-3 w-3" />
                 </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px] p-4">
-                <form onSubmit={handleSubmit}>
-                    <DialogHeader className="mb-3">
-                        <DialogTitle className="text-lg">Edit Command</DialogTitle>
-                        <DialogDescription className="text-xs">
-                            Make changes to your command.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-3">
+            </CardHeader>
+            <CardContent className="p-3">
+                <form onSubmit={handleSubmit} className="grid gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="grid gap-1.5">
-                            <Input id="title" name="title" defaultValue={command.title || ""} placeholder="Title" className="h-8 text-sm" />
+                            <Input id="title" name="title" placeholder="Title (e.g. List files)" className="h-8 text-sm" />
                         </div>
                         <div className="grid gap-1.5">
                             <Popover open={platformOpen} onOpenChange={setPlatformOpen}>
@@ -127,10 +113,10 @@ export function EditCommandDialog({ command }: { command: Command }) {
                                     >
                                         {selectedPlatforms.length > 0
                                             ? <div className="flex gap-1 overflow-hidden text-foreground">
-                                                {selectedPlatforms.slice(0, 3).map(p => (
+                                                {selectedPlatforms.slice(0, 2).map(p => (
                                                     <Badge key={p} variant="secondary" className="px-1 py-0 text-[10px] h-5">{platforms.find(pl => pl.value === p)?.label}</Badge>
                                                 ))}
-                                                {selectedPlatforms.length > 3 && <span className="text-xs text-muted-foreground">+{selectedPlatforms.length - 3}</span>}
+                                                {selectedPlatforms.length > 2 && <span className="text-xs text-muted-foreground">+{selectedPlatforms.length - 2}</span>}
                                             </div>
                                             : <span>Select platforms...</span>}
                                         <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
@@ -164,40 +150,52 @@ export function EditCommandDialog({ command }: { command: Command }) {
                                 </PopoverContent>
                             </Popover>
                         </div>
+                    </div>
+
+                    <div className="grid gap-1.5">
+                        <Textarea
+                            id="text"
+                            name="text"
+                            className="font-mono min-h-[60px] text-sm py-2"
+                            required
+                            placeholder="Command (e.g. ls -la)"
+                            onChange={handleTextChange}
+                        />
+                    </div>
+
+                    <div className="grid gap-1.5">
+                        <Input id="description" name="description" placeholder="Description (optional)" className="h-8 text-sm" />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
                         <div className="grid gap-1.5">
-                            <Textarea id="text" name="text" defaultValue={command.text} placeholder="Command" className="font-mono min-h-[60px] text-sm py-2" required />
+                            <TagInput
+                                tags={tags}
+                                setTags={setTags}
+                                placeholder="Tags (git, docker...)"
+                            />
+                            <input type="hidden" name="tags" value={tags.join(",")} />
                         </div>
-                        <div className="grid gap-1.5">
-                            <Input id="description" name="description" defaultValue={command.description || ""} placeholder="Description" className="h-8 text-sm" />
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
-                            <div className="grid gap-1.5">
-                                <TagInput
-                                    tags={tags}
-                                    setTags={setTags}
-                                    placeholder="Tags..."
-                                />
-                                <input type="hidden" name="tags" value={tags.join(",")} />
-                            </div>
-                            <div className="flex items-center justify-end space-x-2 h-8">
-                                <Switch
-                                    id="visibility"
-                                    checked={isPublic}
-                                    onCheckedChange={setIsPublic}
-                                    className="scale-75 origin-right"
-                                />
-                                <Label htmlFor="visibility" className="flex items-center gap-1 cursor-pointer text-xs min-w-[60px]">
-                                    {isPublic ? <Globe className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
-                                    {isPublic ? "Public" : "Private"}
-                                </Label>
-                            </div>
+                        <div className="flex items-center justify-end space-x-2 h-8">
+                            <Switch
+                                id="visibility"
+                                checked={isPublic}
+                                onCheckedChange={setIsPublic}
+                                className="scale-75 origin-right"
+                            />
+                            <Label htmlFor="visibility" className="flex items-center gap-1 cursor-pointer text-xs min-w-[60px]">
+                                {isPublic ? <Globe className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                                {isPublic ? "Public" : "Private"}
+                            </Label>
                         </div>
                     </div>
-                    <DialogFooter className="mt-4">
-                        <Button type="submit" disabled={loading} size="sm" className="h-7 text-xs">Save changes</Button>
-                    </DialogFooter>
+
+                    <div className="flex justify-end gap-2 pt-1">
+                        <Button type="button" variant="outline" size="sm" onClick={onCancel} className="h-7 text-xs">Cancel</Button>
+                        <Button type="submit" size="sm" disabled={loading || selectedPlatforms.length === 0} className="h-7 text-xs">Save</Button>
+                    </div>
                 </form>
-            </DialogContent>
-        </Dialog>
+            </CardContent>
+        </Card>
     )
 }
