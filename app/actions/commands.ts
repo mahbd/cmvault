@@ -64,7 +64,21 @@ export async function getCommands() {
     })
 
     if (!session) {
-        throw new Error("Unauthorized")
+        return await prisma.command.findMany({
+            where: {
+                visibility: "PUBLIC"
+            },
+            orderBy: {
+                createdAt: "desc"
+            },
+            include: {
+                tags: {
+                    include: {
+                        tag: true
+                    }
+                }
+            }
+        })
     }
 
     return await prisma.command.findMany({

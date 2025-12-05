@@ -47,6 +47,8 @@ const items = [
 
 export function AppSidebar() {
     const router = useRouter()
+    const { data: session } = authClient.useSession()
+
     const handleSignOut = async () => {
         await authClient.signOut({
             fetchOptions: {
@@ -81,10 +83,19 @@ export function AppSidebar() {
             <SidebarFooter>
                 <SidebarMenu>
                     <SidebarMenuItem>
-                        <SidebarMenuButton onClick={handleSignOut}>
-                            <LogOut />
-                            <span>Sign Out</span>
-                        </SidebarMenuButton>
+                        {session ? (
+                            <SidebarMenuButton onClick={handleSignOut}>
+                                <LogOut />
+                                <span>Sign Out</span>
+                            </SidebarMenuButton>
+                        ) : (
+                            <SidebarMenuButton asChild>
+                                <a href="/sign-in">
+                                    <LogOut className="rotate-180" />
+                                    <span>Sign In</span>
+                                </a>
+                            </SidebarMenuButton>
+                        )}
                     </SidebarMenuItem>
                 </SidebarMenu>
             </SidebarFooter>

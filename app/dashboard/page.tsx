@@ -14,13 +14,9 @@ export default async function Dashboard({ searchParams }: { searchParams: { q?: 
         headers: await headers()
     })
 
-    if (!session) {
-        redirect("/sign-in")
-    }
-
     const query = (await searchParams).q || ""
     const commands = await getCommands()
-    const categories = await getCategories()
+    const categories = session ? await getCategories() : []
 
     // Server-side filtering or Client-side? 
     // For now, let's do client-side filtering in CommandList or filter here if we want server-side.
@@ -49,12 +45,14 @@ export default async function Dashboard({ searchParams }: { searchParams: { q?: 
                         />
                     </form>
                 </div>
-                <div className="flex gap-2">
-                    <CategoriesManager categories={categories} />
-                    <CreateCommandDialog />
-                </div>
+                {session && (
+                    <div className="flex gap-2">
+                        <CategoriesManager categories={categories} />
+                        <CreateCommandDialog />
+                    </div>
+                )}
             </div>
-            <CommandList commands={filteredCommands} />
+            <CommandList commands={filteredCommands} readOnly={!session} />
         </div>
     )
 }

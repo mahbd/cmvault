@@ -18,7 +18,7 @@ interface Command {
     tags: { tag: { name: string } }[]
 }
 
-export function CommandList({ commands }: { commands: Command[] }) {
+export function CommandList({ commands, readOnly = false }: { commands: Command[], readOnly?: boolean }) {
     const handleCopy = (text: string) => {
         navigator.clipboard.writeText(text)
         toast.success("Copied to clipboard")
@@ -48,10 +48,14 @@ export function CommandList({ commands }: { commands: Command[] }) {
                             <Button variant="ghost" size="icon" onClick={() => handleCopy(command.text)}>
                                 <Copy className="h-4 w-4" />
                             </Button>
-                            <EditCommandDialog command={command} />
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(command.id)}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
+                            {!readOnly && (
+                                <>
+                                    <EditCommandDialog command={command} />
+                                    <Button variant="ghost" size="icon" onClick={() => handleDelete(command.id)}>
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                </>
+                            )}
                         </div>
                     </CardHeader>
                     <CardContent>
