@@ -80,12 +80,14 @@ export async function POST(req: NextRequest) {
         update: {
             context: JSON.stringify(context),
             os: os || existingUsage?.os, // Update OS if provided
+            usageCount: { increment: 1 },
         },
         create: {
             command: executed_command,
             userId: user.id,
             os,
             context: JSON.stringify(context),
+            usageCount: 1,
         },
     })
 

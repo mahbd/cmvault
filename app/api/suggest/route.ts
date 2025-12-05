@@ -30,32 +30,104 @@ export async function POST(req: NextRequest) {
         return NextResponse.json([])
     }
 
-    const where: any = {
+    // 1. Fetch User's Learned Commands (CommandUsage)
+    const userLearned = await prisma.commandUsage.findMany({
+        where: {
+            userId: user.id,
+            command: { contains: query }, // Simple contains for now, or use terms logic if needed
+            // For CommandUsage, we only have 'command' field, so multi-term check on single field:
+            AND: terms.map(term => ({ command: { contains: term } }))
+        },
+        orderBy: { usageCount: "desc" },
+        take: 10
+    })
+
+    // 2. Fetch User's Saved Commands (Command)
+    const userSavedWhere: any = {
         userId: user.id,
         AND: terms.map(term => ({
             OR: [
                 { text: { contains: term } },
+                { title: { contains: term } },
+                { description: { contains: term } },
             ]
         }))
     }
-
-    // Filter by OS if provided
     if (platform) {
-        where.AND.push({
+        userSavedWhere.AND.push({
             OR: [
                 { platform: { contains: platform.toLowerCase() } },
                 { platform: { contains: "others" } },
-                // If platform is empty string, consider it valid for all
                 { platform: { equals: "" } }
             ]
         })
     }
-
-    const commands = await prisma.command.findMany({
-        where,
-        take: 20,
+    const userSaved = await prisma.command.findMany({
+        where: userSavedWhere,
         orderBy: { usageCount: "desc" },
+        take: 10
     })
 
-    return NextResponse.json(commands.map(c => c.text))
+    // 3. Fetch Public Commands from Others
+    const publicOthersWhere: any = {
+        userId: { not: user.id },
+        visibility: "PUBLIC",
+        AND: terms.map(term => ({
+            OR: [
+                { text: { contains: term } },
+                { title: { contains: term } },
+                { description: { contains: term } },
+            ]
+        }))
+    }
+    if (platform) {
+        publicOthersWhere.AND.push({
+            OR: [
+                { platform: { contains: platform.toLowerCase() } },
+                { platform: { contains: "others" } },
+                { platform: { equals: "" } }
+            ]
+        })
+    }
+    const publicOthers = await prisma.command.findMany({
+        where: publicOthersWhere,
+        orderBy: { usageCount: "desc" },
+        take: 5
+    })
+
+    // Combine results
+    const results: string[] = []
+    const seen = new Set<string>()
+
+    const add = (cmd: string) => {
+        if (!seen.has(cmd)) {
+            seen.add(cmd)
+            results.push(cmd)
+        }
+    }
+
+    // Slot 1: 1st from Learned
+    if (userLearned.length > 0) add(userLearned[0].command)
+
+    // Slot 2: 1st from Saved (if not same as slot 1)
+    if (userSaved.length > 0) add(userSaved[0].text)
+
+    // Slot 3 & 4: 1st and 2nd from Public Others
+    if (publicOthers.length > 0) add(publicOthers[0].text)
+    if (publicOthers.length > 1) add(publicOthers[1].text)
+
+    // Rest: Mix remaining Learned and Saved, ranked by usage count
+    // We'll merge the remaining lists and sort them
+    const remainingLearned = userLearned.map(c => ({ text: c.command, count: c.usageCount }))
+    const remainingSaved = userSaved.map(c => ({ text: c.text, count: c.usageCount }))
+
+    const pool = [...remainingLearned, ...remainingSaved]
+        .sort((a, b) => b.count - a.count)
+
+    for (const item of pool) {
+        if (results.length >= 10) break
+        add(item.text)
+    }
+
+    return NextResponse.json(results)
 }
