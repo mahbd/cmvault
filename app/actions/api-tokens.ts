@@ -50,3 +50,23 @@ export async function revokeApiToken() {
 
     revalidatePath("/dashboard")
 }
+
+export async function generateTempCode() {
+    const session = await auth.api.getSession({
+        headers: await headers()
+    })
+    if (!session?.user?.id) throw new Error("Unauthorized")
+
+    // Generate 6 digit code
+    const code = Math.floor(100000 + Math.random() * 900000).toString()
+
+    await prisma.user.update({
+        where: { id: session.user.id },
+        data: {
+            tempCode: code,
+            tempAuthCodeCreatedAt: new Date()
+        },
+    })
+
+    return code
+}

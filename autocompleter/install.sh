@@ -24,10 +24,36 @@ fi
 
 # Ask for API Token
 if [[ -n "$EXISTING_TOKEN" ]]; then
-    read -p "Enter your CMVault API Token (Press Enter to keep existing): " TOKEN
-    TOKEN=${TOKEN:-$EXISTING_TOKEN}
+    read -p "Enter your CMVault API Token or 6-Digit Device Code (Press Enter to keep existing): " INPUT_TOKEN
+    INPUT_TOKEN=${INPUT_TOKEN:-$EXISTING_TOKEN}
 else
-    read -p "Enter your CMVault API Token: " TOKEN
+    read -p "Enter your CMVault API Token or 6-Digit Device Code: " INPUT_TOKEN
+fi
+
+# Ask for API URL
+read -p "Enter your CMVault API URL (default: $EXISTING_URL): " API_URL
+API_URL=${API_URL:-$EXISTING_URL}
+
+echo "$API_URL" > "$URL_FILE"
+chmod 600 "$URL_FILE"
+
+# Check if input is a 6-digit code (simple regex check)
+if [[ "$INPUT_TOKEN" =~ ^[0-9]{6}$ ]]; then
+    echo "Exchanging device code for API token..."
+    RESPONSE=$(curl -s -X POST "$API_URL/api/exchange-token" \
+        -H "Content-Type: application/json" \
+        -d "{\"code\": \"$INPUT_TOKEN\"}")
+    
+    # Extract token using grep/sed to avoid jq dependency
+    TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | sed 's/"token":"//;s/"//')
+    
+    if [[ -z "$TOKEN" ]]; then
+        echo "Error: Failed to exchange code. Server response: $RESPONSE"
+        exit 1
+    fi
+    echo "Successfully authenticated!"
+else
+    TOKEN="$INPUT_TOKEN"
 fi
 
 if [[ -z "$TOKEN" ]]; then
@@ -37,13 +63,6 @@ fi
 
 echo "$TOKEN" > "$TOKEN_FILE"
 chmod 600 "$TOKEN_FILE"
-
-# Ask for API URL
-read -p "Enter your CMVault API URL (default: $EXISTING_URL): " API_URL
-API_URL=${API_URL:-$EXISTING_URL}
-
-echo "$API_URL" > "$URL_FILE"
-chmod 600 "$URL_FILE"
 
 LEARN_FILE="$CONFIG_DIR/learn"
 EXISTING_LEARN="true"
