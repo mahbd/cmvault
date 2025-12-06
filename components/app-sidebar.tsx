@@ -23,21 +23,21 @@ const items = [
         url: "/dashboard",
         icon: Home,
     },
-    {
-        title: "Inbox",
-        url: "#",
-        icon: Inbox,
-    },
-    {
-        title: "Calendar",
-        url: "#",
-        icon: Calendar,
-    },
-    {
-        title: "Search",
-        url: "#",
-        icon: Search,
-    },
+    // {
+    //     title: "Inbox",
+    //     url: "#",
+    //     icon: Inbox,
+    // },
+    // {
+    //     title: "Calendar",
+    //     url: "#",
+    //     icon: Calendar,
+    // },
+    // {
+    //     title: "Search",
+    //     url: "#",
+    //     icon: Search,
+    // },
     {
         title: "Learned",
         url: "/learned",
