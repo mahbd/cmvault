@@ -90,11 +90,17 @@ zmodload zsh/system
 CMVAULT_URL_FILE="${HOME}/.config/cmvault/url"
 CMVAULT_TOKEN_FILE="${HOME}/.config/cmvault/token"
 CMVAULT_LEARN_FILE="${HOME}/.config/cmvault/learn"
+CMVAULT_CACHE_DIR="${HOME}/.config/cmvault/cache"
 
 # Ensure config files exist
 if [[ ! -f "$CMVAULT_URL_FILE" ]] || [[ ! -f "$CMVAULT_TOKEN_FILE" ]]; then
     echo "CMVault: Config not found. Please run the install script."
     return
+fi
+
+# Ensure cache dir exists
+if [[ ! -d "$CMVAULT_CACHE_DIR" ]]; then
+    mkdir -p "$CMVAULT_CACHE_DIR"
 fi
 
 CMVAULT_API_URL=$(cat "$CMVAULT_URL_FILE")
@@ -174,7 +180,21 @@ _cmvault_fetch_suggestions_async() {
     
     # Start background job
     (
-        local suggestions=$(curl -s --max-time 1.0 -X POST "${CMVAULT_API_URL}/api/suggest" \
+        # Calculate cache key (MD5 of query + pwd)
+        # Using md5sum which is standard on Linux. 
+        # For cross-platform we might need checks, but user is on Linux.
+        local cache_key=$(echo "${query}${pwd}" | md5sum | awk '{print $1}')
+        local cache_file="${CMVAULT_CACHE_DIR}/${cache_key}"
+        
+        # 1. Check Cache
+        # 1. Check Cache
+        if [[ -f "$cache_file" ]]; then
+            cat "$cache_file" > $_cmvault_fifo
+            # Continue to fetch fresh data (Stale-While-Revalidate)
+        fi
+
+        # 2. Fetch from API
+        local suggestions=$(curl -s --max-time 3.0 -X POST "${CMVAULT_API_URL}/api/suggest" \
             -H "Authorization: Bearer ${CMVAULT_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "{\"query\": \"$query\", \"os\": \"$os\", \"pwd\": \"$pwd\"}")
@@ -182,6 +202,8 @@ _cmvault_fetch_suggestions_async() {
         local parsed=$(echo "$suggestions" | grep -o '"[^"]*"' | tr -d '"')
         
         if [[ -n "$parsed" ]]; then
+            # Write to cache and FIFO
+            echo "$parsed" > "$cache_file"
             echo "$parsed" > $_cmvault_fifo
         fi
     ) &!
