@@ -65,6 +65,8 @@ chmod 600 "$LEARN_FILE"
 cat << 'EOF' > ~/.config/cmvault/cmvault-plugin.zsh
 # CMVault Intelligent Autocompleter Plugin for Zsh
 
+zmodload zsh/system
+
 # Configuration
 CMVAULT_URL_FILE="${HOME}/.config/cmvault/url"
 CMVAULT_TOKEN_FILE="${HOME}/.config/cmvault/token"
@@ -80,29 +82,91 @@ CMVAULT_API_URL=$(cat "$CMVAULT_URL_FILE")
 CMVAULT_TOKEN=$(cat "$CMVAULT_TOKEN_FILE")
 
 # State variables
-_cmvault_suggestions=()
-_cmvault_index=1
+typeset -g _cmvault_suggestions=()
+typeset -g _cmvault_index=1
+typeset -g _cmvault_fd
+typeset -g _cmvault_fifo="${TMPDIR:-/tmp}/cmvault-suggestions-$$"
+typeset -g _cmvault_async_pid=0
 
-# Suggestion fetcher function
-_cmvault_fetch_suggestions() {
+# Cleanup function
+_cmvault_cleanup() {
+    if [[ -n "$_cmvault_fd" ]]; then
+        zle -F $_cmvault_fd 2>/dev/null
+        exec {_cmvault_fd}>&- 2>/dev/null
+    fi
+    rm -f "$_cmvault_fifo"
+}
+# Register cleanup on exit
+trap _cmvault_cleanup EXIT
+
+# Create FIFO if not exists
+if [[ ! -p "$_cmvault_fifo" ]]; then
+    mkfifo "$_cmvault_fifo"
+fi
+
+# Open FIFO for read/write (non-blocking)
+exec {_cmvault_fd}<>"$_cmvault_fifo"
+
+# Async handler
+_cmvault_async_handler() {
+    local fd=$1
+    local data
+    
+    if sysread -i $fd data; then
+        [[ -z "$data" ]] && return
+        
+        # Split by newline
+        local -a lines
+        lines=("${(@f)data}")
+        
+        _cmvault_suggestions=($lines)
+        _cmvault_index=1
+        
+        # Filter against current buffer to avoid stale suggestions
+        local -a valid_suggestions
+        for suggestion in $_cmvault_suggestions; do
+            if [[ "$suggestion" == "$BUFFER"* ]]; then
+                valid_suggestions+=("$suggestion")
+            fi
+        done
+        _cmvault_suggestions=($valid_suggestions)
+        
+        if [[ ${#_cmvault_suggestions[@]} -gt 0 ]]; then
+            _cmvault_show_suggestion
+        else
+            POSTDISPLAY=""
+        fi
+        zle -R
+    fi
+}
+
+# Register handler
+zle -F $_cmvault_fd _cmvault_async_handler
+
+_cmvault_fetch_suggestions_async() {
     local query="$1"
     local os=$(uname -s)
     local pwd="$PWD"
     
-    # Debounce: only fetch if query length > 0
-    if [[ ${#query} -lt 1 ]]; then
-        return
+    # Kill previous job
+    if [[ $_cmvault_async_pid -gt 0 ]]; then
+        kill $_cmvault_async_pid 2>/dev/null
     fi
+    
+    # Start background job
+    (
+        local suggestions=$(curl -s --max-time 1.0 -X POST "${CMVAULT_API_URL}/api/suggest" \
+            -H "Authorization: Bearer ${CMVAULT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\": \"$query\", \"os\": \"$os\", \"pwd\": \"$pwd\"}")
 
-    # API Request
-    local suggestions=$(curl -s --max-time 0.2 -X POST "${CMVAULT_API_URL}/api/suggest" \
-        -H "Authorization: Bearer ${CMVAULT_TOKEN}" \
-        -H "Content-Type: application/json" \
-        -d "{\"query\": \"$query\", \"os\": \"$os\", \"pwd\": \"$pwd\"}")
-
-    # Parse JSON array of strings
-    # Extract strings inside quotes and remove quotes
-    echo "$suggestions" | grep -o '"[^"]*"' | tr -d '"'
+        local parsed=$(echo "$suggestions" | grep -o '"[^"]*"' | tr -d '"')
+        
+        if [[ -n "$parsed" ]]; then
+            echo "$parsed" > $_cmvault_fifo
+        fi
+    ) &!
+    _cmvault_async_pid=$!
 }
 
 _cmvault_show_suggestion() {
@@ -167,15 +231,23 @@ _cmvault_show_suggestion() {
 _cmvault_autosuggest() {
     # Only suggest if buffer is not empty
     if [[ -n "$BUFFER" ]]; then
-        # Fetch suggestions into array (split by newline)
-        _cmvault_suggestions=("${(@f)$(_cmvault_fetch_suggestions "$BUFFER")}")
-        _cmvault_index=1
+        # Filter existing suggestions against new buffer
+        local -a valid_suggestions
+        for suggestion in $_cmvault_suggestions; do
+            if [[ "$suggestion" == "$BUFFER"* ]]; then
+                valid_suggestions+=("$suggestion")
+            fi
+        done
+        _cmvault_suggestions=($valid_suggestions)
         
         if [[ ${#_cmvault_suggestions[@]} -gt 0 ]]; then
             _cmvault_show_suggestion
         else
             POSTDISPLAY=""
         fi
+        
+        # Trigger async fetch
+        _cmvault_fetch_suggestions_async "$BUFFER"
     else
         POSTDISPLAY=""
         _cmvault_suggestions=()
@@ -251,7 +323,6 @@ _cmvault_vi_backward_delete_char() {
 }
 zle -N vi-backward-delete-char _cmvault_vi_backward_delete_char
 
-# Key bindings
 # Key bindings
 bindkey '^[[1;5A' _cmvault_cycle_up   # Ctrl + Up Arrow
 bindkey '^[[1;5B' _cmvault_cycle_down # Ctrl + Down Arrow
