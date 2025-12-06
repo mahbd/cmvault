@@ -220,11 +220,18 @@ _cmvault_accept() {
     fi
 }
 
+_cmvault_accept_line() {
+    POSTDISPLAY=""
+    _cmvault_suggestions=()
+    zle .accept-line
+}
+
 # Hook into ZLE
 zle -N _cmvault_autosuggest
 zle -N _cmvault_cycle_up
 zle -N _cmvault_cycle_down
 zle -N _cmvault_accept
+zle -N accept-line _cmvault_accept_line
 
 _cmvault_self_insert() {
     zle .self-insert

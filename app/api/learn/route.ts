@@ -30,66 +30,107 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Missing command" }, { status: 400 })
     }
 
-    // Find existing usage
-    const existingUsage = await prisma.commandUsage.findUnique({
-        where: {
-            userId_command: {
-                userId: user.id,
-                command: executed_command,
-            },
-        },
-    })
+    // Helper to update context
+    const updateContext = (currentContext: ContextEntry[], pwd: string, lsOutput: string, os: string | undefined) => {
+        const currentTime = Date.now()
+        const index = currentContext.findIndex(entry => entry.directory === pwd)
 
-    let context: ContextEntry[] = []
-    if (existingUsage?.context) {
-        try {
-            context = JSON.parse(existingUsage.context)
-        } catch (e) {
-            context = []
+        if (index !== -1) {
+            currentContext[index].count += 1
+            currentContext[index].time = currentTime
+            if (lsOutput) currentContext[index].lsOutput = lsOutput
+        } else {
+            currentContext.push({
+                directory: pwd || "",
+                time: currentTime,
+                count: 1,
+                lsOutput: lsOutput || ""
+            })
         }
+        return currentContext
     }
 
-    const currentTime = Date.now()
-    const existingEntryIndex = context.findIndex(entry => entry.directory === pwd)
-
-    if (existingEntryIndex !== -1) {
-        // Update existing entry
-        context[existingEntryIndex].count += 1
-        context[existingEntryIndex].time = currentTime
-        // Replace ls output if provided (assuming latest is best)
-        if (ls_output) {
-            context[existingEntryIndex].lsOutput = ls_output
-        }
-    } else {
-        // Add new entry
-        context.push({
-            directory: pwd || "",
-            time: currentTime,
-            count: 1,
-            lsOutput: ls_output || ""
+    try {
+        // Try to find existing first
+        const existing = await prisma.commandUsage.findUnique({
+            where: {
+                userId_command: {
+                    userId: user.id,
+                    command: executed_command,
+                },
+            },
         })
-    }
 
-    await prisma.commandUsage.upsert({
-        where: {
-            userId_command: {
-                userId: user.id,
-                command: executed_command,
-            },
-        },
-        update: {
-            context: JSON.stringify(context),
-            os: os || existingUsage?.os, // Update OS if provided
-            usageCount: { increment: 1 },
-        },
-        create: {
-            command: executed_command,
-            userId: user.id,
-            os,
-            context: JSON.stringify(context),
-            usageCount: 1,
-        },
-    })
+        if (existing) {
+            let context: ContextEntry[] = []
+            try {
+                const parsed = JSON.parse(existing.context || "[]")
+                context = Array.isArray(parsed) ? parsed : []
+            } catch {
+                context = []
+            }
+
+            const updatedContext = updateContext(context, pwd, ls_output, os)
+
+            await prisma.commandUsage.update({
+                where: { id: existing.id },
+                data: {
+                    context: JSON.stringify(updatedContext),
+                    os: os || existing.os,
+                    usageCount: { increment: 1 },
+                },
+            })
+        } else {
+            // Try to create
+            const initialContext = updateContext([], pwd, ls_output, os)
+
+            await prisma.commandUsage.create({
+                data: {
+                    command: executed_command,
+                    userId: user.id,
+                    os,
+                    context: JSON.stringify(initialContext),
+                    usageCount: 1,
+                },
+            })
+        }
+    } catch (error: any) {
+        // Handle race condition: unique constraint failed (P2002)
+        if (error.code === 'P2002') {
+            // Record was created by another request in the meantime, so update it
+            const existing = await prisma.commandUsage.findUnique({
+                where: {
+                    userId_command: {
+                        userId: user.id,
+                        command: executed_command,
+                    },
+                },
+            })
+
+            if (existing) {
+                let context: ContextEntry[] = []
+                try {
+                    const parsed = JSON.parse(existing.context || "[]")
+                    context = Array.isArray(parsed) ? parsed : []
+                } catch {
+                    context = []
+                }
+
+                const updatedContext = updateContext(context, pwd, ls_output, os)
+
+                await prisma.commandUsage.update({
+                    where: { id: existing.id },
+                    data: {
+                        context: JSON.stringify(updatedContext),
+                        os: os || existing.os,
+                        usageCount: { increment: 1 },
+                    },
+                })
+            }
+        } else {
+            throw error
+        }
+    }
 
     // Increment usage count in Command table if it exists
     const existingCommand = await prisma.command.findFirst({
