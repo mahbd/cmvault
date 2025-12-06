@@ -1,85 +1,95 @@
-# CMVault - Command Manager Vault
+# CMVault - The Developer's Command Vault
 
-CMVault is a personal command manager that helps you store, organize, and recall your terminal commands. It features a modern web dashboard and an intelligent Zsh plugin for real-time autocompletion in your terminal.
+CMVault is a powerful command management system designed for developers. It serves as a central repository for your most used, complex, or hard-to-remember shell commands, offering intelligent autocompletion directly in your terminal.
 
-## Features
+## 🌐 Live Demo
+**[https://cmd.mahmudul.com.bd](https://cmd.mahmudul.com.bd)**
 
-- **Command Management**: Store commands with titles, descriptions, and tags.
-- **Organization**: Filter by tags, platforms (Linux, macOS, Windows, etc.), and search instantly.
-- **Intelligent Autocompleter**: A Zsh plugin that suggests commands from your vault as you type.
-- **Privacy**: Mark commands as Public or Private.
-- **Modern UI**: Built with Next.js, Tailwind CSS, and ShadCN UI.
+## ✨ Features
 
-## Getting Started
+### 🚀 Smart Command Management
+*   **Centralized Storage**: Keep all your snippets, scripts, and one-liners in one place.
+*   **Multi-Platform Support**: Tag commands for specific OSs (Linux, macOS, Windows) or make them universal.
+*   **Privacy Control**: Toggle commands between Public (sharable) and Private.
+*   **Tagging System**: Organize commands with custom tags for easy filtering.
 
-### Prerequisites
+### 💻 Intelligent Terminal Autocompleter
+*   **Zsh Integration**: A robust Zsh plugin that integrates directly with your shell.
+*   **Real-time Suggestions**: Get command suggestions as you type based on your personalized vault.
+*   **Context Aware**: Auto-fetches suggestions relevant to your current workflow.
+*   **Non-Blocking & Async**: Suggestions are fetched asynchronously to ensure zero typing lag.
+*   **Persistent Caching**: Stale-while-revalidate caching ensures instant feedback even with slow networks.
+*   **Smart Learning Mode**: Optionally captures executed commands to suggest them later ("Learn" -> "Promote" workflow).
 
-- Node.js 18+
-- npm or pnpm
+### 🔒 Secure Authentication
+*   **Modern Auth**: Supports Google OAuth for passwordless login.
+*   **API Tokens**: Generate secure API tokens for CLI access.
+*   **Device Code Flow**: Easily authenticate new terminal devices using a 6-digit temporary code—no need to copy-paste long tokens!
 
-### Installation
+## 🛠️ Installation
 
-1.  Clone the repository:
+### Web Application (Self-Hosting)
+1.  **Clone the repo**:
     ```bash
     git clone https://github.com/yourusername/cmvault.git
     cd cmvault
     ```
-
-2.  Install dependencies:
+2.  **Install dependencies**:
     ```bash
     npm install
     ```
-
-3.  Set up the database (SQLite):
+3.  **Setup Environment**:
+    Copy `.env.example` to `.env` and configure your database (SQLite/Postgres) and auth providers.
+4.  **Run Migrations**:
     ```bash
     npx prisma db push
     ```
-
-4.  Run the development server:
+5.  **Start the Server**:
     ```bash
     npm run dev
     ```
 
-5.  Open [http://localhost:3000](http://localhost:3000) in your browser.
+### Terminal Plugin (Client)
+To install the autocompleter in your Zsh shell:
 
-## Intelligent Terminal Autocompleter
-
-CMVault comes with a Zsh plugin that connects to your local instance to provide AI-like command suggestions.
-
-### Setup
-
-1.  **Generate API Token**:
-    - Go to the Dashboard -> **Settings & API**.
-    - Enter a name (e.g., "My Laptop") and click **Generate**.
-    - Copy the generated token.
-
-2.  **Install the Plugin**:
-    Run the installation script:
+1.  **Run the Installer**:
     ```bash
     bash <(curl -s https://raw.githubusercontent.com/mahbd/cmvault/main/autocompleter/install.sh)
     ```
-    Enter your API token and backend URL when prompted.
+    *(Replace URL with your self-hosted instance if applicable)*
 
-3.  **Activate**:
-    Restart your shell or run:
+2.  **Authenticate**:
+    The installer will ask for your **API Token** or a **6-Digit Device Code**.
+    *   Go to **Settings** on the web dashboard to generate a code.
+    *   Enter it in the terminal to instantly link your device.
+
+3.  **Restart Shell**:
     ```bash
     source ~/.zshrc
     ```
 
-### Usage
+## 📖 Usage Guide
 
-- **Type**: Start typing a command in your terminal.
-- **Suggest**: If a matching command exists in your vault, it will appear as gray "ghost text".
-- **Accept**: Press `Right Arrow` to accept the suggestion.
+### Using the Dashboard
+*   **Create**: Press `+` or click "Add Command". Enter title, command, platform, and tags.
+*   **Filter**: Use the platform dropdown to see commands for your specific OS.
+*   **Search**: Press `/` to focus the search bar. Fuzzy search finds commands by keywords.
+*   **Edit/Delete**: Managing existing commands is just a click away.
 
-## Tech Stack
+### Using the Autocompleter
+Just start typing!
+*   **Ghost Text**: Suggestions appear in gray.
+*   **Cycle Options**: Use `Up` / `Down` arrows to cycle through multiple matching commands.
+*   **Accept**: Press `Right Arrow` to accept a suggestion.
 
-- **Framework**: Next.js 15 (App Router)
-- **Database**: SQLite (via Prisma ORM)
-- **Styling**: Tailwind CSS
-- **UI Components**: ShadCN UI
-- **Shell Integration**: Zsh Scripting
+### Learning Mode
+If enabled during installation, CMVault captures commands you execute.
+1.  Run commands as usual in your terminal.
+2.  Visit the **Learned** page in the dashboard.
+3.  Click **Promote** to turn a captured command into a permanent, sharable snippet in your vault.
 
-## License
+## 🤝 Contributing
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-MIT
+## 📄 License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
