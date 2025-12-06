@@ -29,14 +29,7 @@ import { TagInput } from "@/components/tag-input"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
 
-const platforms = [
-    { value: "linux", label: "Linux" },
-    { value: "macos", label: "macOS" },
-    { value: "windows", label: "Windows" },
-    { value: "android", label: "Android" },
-    { value: "ios", label: "iOS" },
-    { value: "others", label: "Others" },
-]
+import { PLATFORMS } from "@/lib/constants"
 
 interface CreateCommandFormProps {
     initialData?: {
@@ -199,8 +192,8 @@ export function CreateCommandForm({ initialData, onCancel, onSuccess, onSearch }
                                     >
                                         {selectedPlatforms.length > 0
                                             ? <div className="flex gap-1 overflow-hidden text-foreground">
-                                                {selectedPlatforms.slice(0, 1).map(p => (
-                                                    <Badge key={p} variant="secondary" className="px-1 py-0 text-[10px] h-5">{platforms.find(pl => pl.value === p)?.label}</Badge>
+                                                {PLATFORMS.slice(0, 1).map(p => (
+                                                    <Badge key={p.value} variant="secondary" className="px-1 py-0 text-[10px] h-5">{p.label}</Badge>
                                                 ))}
                                                 {selectedPlatforms.length > 1 && <span className="text-xs text-muted-foreground">+{selectedPlatforms.length - 1}</span>}
                                             </div>
@@ -214,7 +207,7 @@ export function CreateCommandForm({ initialData, onCancel, onSuccess, onSearch }
                                         <CommandList>
                                             <CommandEmpty>No platform found.</CommandEmpty>
                                             <CommandGroup>
-                                                {platforms.map((framework) => (
+                                                {PLATFORMS.map((framework) => (
                                                     <CommandItem
                                                         key={framework.value}
                                                         value={framework.value}

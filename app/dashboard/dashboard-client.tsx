@@ -16,6 +16,7 @@ import {
     DropdownMenuTrigger,
     DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu"
+import { PLATFORMS } from "@/lib/constants"
 
 interface DashboardClientProps {
     initialCommands: any[]
@@ -57,11 +58,7 @@ export function DashboardClient({ initialCommands, session, initialQuery = "" }:
         return () => document.removeEventListener("keydown", handleKeyDown)
     }, [session])
 
-    // Extract unique platforms
-    const platforms = useMemo(() => {
-        const unique = new Set(initialCommands.map(c => c.platform).filter(Boolean))
-        return Array.from(unique).sort()
-    }, [initialCommands])
+
 
     const filteredCommands = initialCommands.filter((cmd) => {
         const matchesQuery = cmd.text.toLowerCase().includes(query.toLowerCase()) ||
@@ -69,7 +66,7 @@ export function DashboardClient({ initialCommands, session, initialQuery = "" }:
             cmd.description?.toLowerCase().includes(query.toLowerCase()) ||
             cmd.tags.some((t: any) => t.tag.name.toLowerCase().includes(query.toLowerCase()))
 
-        const matchesPlatform = selectedPlatform ? cmd.platform === selectedPlatform : true
+        const matchesPlatform = selectedPlatform ? cmd.platform.split(",").includes(selectedPlatform) : true
 
         return matchesQuery && matchesPlatform
     })
@@ -107,8 +104,15 @@ export function DashboardClient({ initialCommands, session, initialQuery = "" }:
                     </div>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="icon" className={selectedPlatform ? "bg-accent text-accent-foreground" : ""}>
+                            <Button
+                                variant="outline"
+                                size={selectedPlatform ? "default" : "icon"}
+                                className={selectedPlatform ? "bg-accent text-accent-foreground gap-2 px-3" : ""}
+                            >
                                 <Filter className="h-4 w-4" />
+                                {selectedPlatform && (
+                                    <span>{PLATFORMS.find(p => p.value === selectedPlatform)?.label}</span>
+                                )}
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-48">
@@ -120,13 +124,13 @@ export function DashboardClient({ initialCommands, session, initialQuery = "" }:
                             >
                                 All Platforms
                             </DropdownMenuCheckboxItem>
-                            {platforms.map(platform => (
+                            {PLATFORMS.map(platform => (
                                 <DropdownMenuCheckboxItem
-                                    key={platform}
-                                    checked={selectedPlatform === platform}
-                                    onCheckedChange={() => setSelectedPlatform(platform as string)}
+                                    key={platform.value}
+                                    checked={selectedPlatform === platform.value}
+                                    onCheckedChange={() => setSelectedPlatform(platform.value)}
                                 >
-                                    {platform}
+                                    {platform.label}
                                 </DropdownMenuCheckboxItem>
                             ))}
                         </DropdownMenuContent>
