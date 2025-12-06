@@ -33,7 +33,6 @@ interface LearnedClientProps {
 
 export function LearnedClient({ initialCommands, session }: LearnedClientProps) {
     const [commands, setCommands] = useState(initialCommands)
-    const [promotingCommand, setPromotingCommand] = useState<any | null>(null)
 
     const handleDelete = async (id: string) => {
         try {
@@ -45,12 +44,9 @@ export function LearnedClient({ initialCommands, session }: LearnedClientProps) 
         }
     }
 
-    const handlePromoteSuccess = async (commandId: string) => {
-        // After successful promotion, delete the learned entry
-        if (promotingCommand) {
-            setPromotingCommand(null)
-            toast.success("Command promoted and removed from learned list")
-        }
+    const handlePromote = (cmd: any) => {
+        sessionStorage.setItem("cmvault-prefill", cmd.command)
+        window.location.href = "/dashboard"
     }
 
     return (
@@ -61,23 +57,6 @@ export function LearnedClient({ initialCommands, session }: LearnedClientProps) 
                     Commands captured from your terminal usage.
                 </p>
             </div>
-
-            {promotingCommand && (
-                <div className="mb-6 animate-in slide-in-from-top-2 fade-in duration-300">
-                    <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold">Promote Command</h2>
-                        <Button variant="ghost" size="sm" onClick={() => setPromotingCommand(null)}>
-                            Cancel
-                        </Button>
-                    </div>
-                    <CreateCommandForm
-                        initialText={promotingCommand.command}
-                        onCancel={() => setPromotingCommand(null)}
-                        onSuccess={() => handlePromoteSuccess(promotingCommand.id)}
-                        onSearch={() => { }}
-                    />
-                </div>
-            )}
 
             <div className="grid gap-4">
                 {commands.length === 0 ? (
@@ -112,7 +91,7 @@ export function LearnedClient({ initialCommands, session }: LearnedClientProps) 
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => setPromotingCommand(cmd)}
+                                        onClick={() => handlePromote(cmd)}
                                     >
                                         <ArrowUpRight className="h-4 w-4 mr-2" />
                                         Promote

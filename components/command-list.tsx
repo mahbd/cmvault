@@ -2,10 +2,10 @@
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Copy, Trash2 } from "lucide-react"
+import { Copy, Trash2, Pencil } from "lucide-react"
 import { deleteCommand } from "@/app/actions/commands"
 import { toast } from "sonner"
-import { EditCommandDialog } from "@/components/edit-command-dialog"
+import Link from "next/link"
 import {
     Table,
     TableBody,
@@ -25,7 +25,7 @@ interface Command {
     tags: { tag: { name: string } }[]
 }
 
-export function CommandList({ commands, readOnly = false }: { commands: Command[], readOnly?: boolean }) {
+export function CommandList({ commands, readOnly = false, onEdit }: { commands: Command[], readOnly?: boolean, onEdit?: (cmd: Command) => void }) {
     const handleCopy = (text: string) => {
         navigator.clipboard.writeText(text)
         toast.success("Copied to clipboard")
@@ -108,7 +108,9 @@ export function CommandList({ commands, readOnly = false }: { commands: Command[
                             {!readOnly && (
                                 <TableCell className="text-right">
                                     <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                                        <EditCommandDialog command={command} />
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit?.(command)}>
+                                            <Pencil className="h-4 w-4" />
+                                        </Button>
                                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(command.id)}>
                                             <Trash2 className="h-4 w-4 text-destructive" />
                                         </Button>

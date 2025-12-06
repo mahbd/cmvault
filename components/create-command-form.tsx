@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { createCommand } from "@/app/actions/commands"
+import { updateCommand } from "@/app/actions/edit-command"
 import { toast } from "sonner"
 import { Check, ChevronsUpDown, Globe, Lock, X } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -26,6 +27,7 @@ import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TagInput } from "@/components/tag-input"
 import { Badge } from "@/components/ui/badge"
+import { useRouter } from "next/navigation"
 
 const platforms = [
     { value: "linux", label: "Linux" },
@@ -33,49 +35,71 @@ const platforms = [
     { value: "windows", label: "Windows" },
     { value: "android", label: "Android" },
     { value: "ios", label: "iOS" },
-    { value: "debian", label: "Debian" },
-    { value: "arch", label: "Arch" },
-    { value: "fedora", label: "Fedora" },
-    { value: "alpine", label: "Alpine" },
     { value: "others", label: "Others" },
 ]
 
 interface CreateCommandFormProps {
+    initialData?: {
+        id: string
+        title: string | null
+        text: string
+        description: string | null
+        platform: string
+        visibility: string
+        tags: { tag: { name: string } }[]
+    }
     onCancel: () => void
     onSuccess: () => void
     onSearch: (query: string) => void
-    initialText?: string
 }
 
-export function CreateCommandForm({ onCancel, onSuccess, onSearch, initialText }: CreateCommandFormProps) {
+export function CreateCommandForm({ initialData, onCancel, onSuccess, onSearch }: CreateCommandFormProps) {
+    const router = useRouter()
     const [loading, setLoading] = useState(false)
     const [platformOpen, setPlatformOpen] = useState(false)
-    const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
-    const [tags, setTags] = useState<string[]>([])
-    const [isPublic, setIsPublic] = useState(false)
+
+    // Initialize state from initialData if available
+    const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(
+        initialData?.platform ? initialData.platform.split(",").filter(Boolean) : []
+    )
+    const [tags, setTags] = useState<string[]>(
+        initialData?.tags ? initialData.tags.map(t => t.tag.name) : []
+    )
+    const [isPublic, setIsPublic] = useState(initialData?.visibility === "PUBLIC")
+    const [text, setText] = useState(initialData?.text || "")
+
     const formRef = useRef<HTMLFormElement>(null)
     const platformButtonRef = useRef<HTMLButtonElement>(null)
+    const textareaRef = useRef<HTMLTextAreaElement>(null)
 
     useEffect(() => {
-        const saved = localStorage.getItem("lastSelectedPlatforms")
-        if (saved) {
-            try {
-                setSelectedPlatforms(JSON.parse(saved))
-            } catch (e) {
-                // Ignore error
-            }
+        if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto'
+            textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'
         }
-    }, [])
+    }, [text])
 
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === "Escape") {
-                onCancel()
+        // Load last selected platforms if creating new
+        if (!initialData) {
+            const saved = localStorage.getItem("lastSelectedPlatforms")
+            if (saved) {
+                try {
+                    setSelectedPlatforms(JSON.parse(saved))
+                } catch (e) {
+                    // Ignore error
+                }
             }
         }
-        document.addEventListener("keydown", handleKeyDown)
-        return () => document.removeEventListener("keydown", handleKeyDown)
-    }, [onCancel])
+
+        // Check for prefill from sessionStorage (for Promote feature)
+        const prefill = sessionStorage.getItem("cmvault-prefill")
+        if (prefill) {
+            setText(prefill)
+            sessionStorage.removeItem("cmvault-prefill")
+            onSearch(prefill) // Filter list based on prefill
+        }
+    }, [initialData, onSearch])
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
@@ -83,18 +107,26 @@ export function CreateCommandForm({ onCancel, onSuccess, onSearch, initialText }
         const formData = new FormData(e.currentTarget)
 
         try {
-            await createCommand({
+            const data = {
                 title: formData.get("title") as string,
-                text: formData.get("text") as string,
-                description: formData.get("description") as string,
+                text: text, // Use state for text
+                description: "",
                 platform: selectedPlatforms.join(","),
-                visibility: isPublic ? "PUBLIC" : "PRIVATE",
+                visibility: (isPublic ? "PUBLIC" : "PRIVATE") as "PUBLIC" | "PRIVATE",
                 tags: tags
-            })
-            toast.success("Command created")
+            }
+
+            if (initialData) {
+                await updateCommand(initialData.id, data)
+                toast.success("Command updated")
+            } else {
+                await createCommand(data)
+                toast.success("Command created")
+            }
             onSuccess()
+            router.refresh()
         } catch (error) {
-            toast.error("Failed to create command")
+            toast.error(initialData ? "Failed to update command" : "Failed to create command")
         } finally {
             setLoading(false)
         }
@@ -114,47 +146,48 @@ export function CreateCommandForm({ onCancel, onSuccess, onSearch, initialText }
         }
     }
 
-    const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        onSearch(e.target.value)
-    }
-
     const togglePlatform = (value: string) => {
         setSelectedPlatforms(prev => {
             const newPlatforms = prev.includes(value)
                 ? prev.filter(p => p !== value)
                 : [...prev, value]
-            localStorage.setItem("lastSelectedPlatforms", JSON.stringify(newPlatforms))
+            if (!initialData) {
+                localStorage.setItem("lastSelectedPlatforms", JSON.stringify(newPlatforms))
+            }
             return newPlatforms
         })
     }
 
     return (
         <Card className="border-2 border-primary/20 shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 pb-0">
-                <CardTitle className="text-sm font-medium">Add New Command</CardTitle>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onCancel}>
-                    <X className="h-3 w-3" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 px-4">
+                <CardTitle className="text-lg font-medium">
+                    {initialData ? "Edit Command" : "Add New Command"}
+                </CardTitle>
+                <Button variant="ghost" size="icon" onClick={onCancel}>
+                    <X className="h-4 w-4" />
                 </Button>
             </CardHeader>
-            <CardContent className="p-3">
+            <CardContent className="px-4">
                 <form
                     ref={formRef}
                     onSubmit={handleSubmit}
                     onKeyDown={handleFormKeyDown}
-                    className="grid gap-3"
+                    className="grid gap-4"
                 >
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="grid gap-1.5">
+                    <div className="flex flex-col md:flex-row gap-4 -mt-4">
+                        <div className="flex-1 min-w-[200px]">
                             <Input
                                 id="title"
                                 name="title"
-                                placeholder="Title (e.g. List files)"
-                                className="h-8 text-sm"
+                                placeholder="Command Title (e.g. List files)"
+                                defaultValue={initialData?.title || ""}
                                 autoFocus
                                 onKeyDown={handleTitleKeyDown}
+                                className="h-10"
                             />
                         </div>
-                        <div className="grid gap-1.5">
+                        <div className="w-full md:w-[200px]">
                             <Popover open={platformOpen} onOpenChange={setPlatformOpen}>
                                 <PopoverTrigger asChild>
                                     <Button
@@ -162,22 +195,22 @@ export function CreateCommandForm({ onCancel, onSuccess, onSearch, initialText }
                                         variant="outline"
                                         role="combobox"
                                         aria-expanded={platformOpen}
-                                        className="justify-between h-8 text-sm px-2 text-muted-foreground"
+                                        className="w-full justify-between px-3 text-muted-foreground h-10"
                                     >
                                         {selectedPlatforms.length > 0
                                             ? <div className="flex gap-1 overflow-hidden text-foreground">
-                                                {selectedPlatforms.slice(0, 2).map(p => (
+                                                {selectedPlatforms.slice(0, 1).map(p => (
                                                     <Badge key={p} variant="secondary" className="px-1 py-0 text-[10px] h-5">{platforms.find(pl => pl.value === p)?.label}</Badge>
                                                 ))}
-                                                {selectedPlatforms.length > 2 && <span className="text-xs text-muted-foreground">+{selectedPlatforms.length - 2}</span>}
+                                                {selectedPlatforms.length > 1 && <span className="text-xs text-muted-foreground">+{selectedPlatforms.length - 1}</span>}
                                             </div>
-                                            : <span>Select platforms...</span>}
-                                        <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                                            : <span>Select Platform</span>}
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="p-0 w-[200px]" align="start">
                                     <Command>
-                                        <CommandInput placeholder="Search platform..." className="h-8 text-xs" />
+                                        <CommandInput placeholder="Search platform..." className="h-9" />
                                         <CommandList>
                                             <CommandEmpty>No platform found.</CommandEmpty>
                                             <CommandGroup>
@@ -186,11 +219,10 @@ export function CreateCommandForm({ onCancel, onSuccess, onSearch, initialText }
                                                         key={framework.value}
                                                         value={framework.value}
                                                         onSelect={() => togglePlatform(framework.value)}
-                                                        className="text-xs"
                                                     >
                                                         <Check
                                                             className={cn(
-                                                                "mr-2 h-3 w-3",
+                                                                "mr-2 h-4 w-4",
                                                                 selectedPlatforms.includes(framework.value) ? "opacity-100" : "opacity-0"
                                                             )}
                                                         />
@@ -203,50 +235,55 @@ export function CreateCommandForm({ onCancel, onSuccess, onSearch, initialText }
                                 </PopoverContent>
                             </Popover>
                         </div>
-                    </div>
-
-                    <div className="grid gap-1.5">
-                        <Textarea
-                            id="text"
-                            name="text"
-                            className="font-mono min-h-[60px] text-sm py-2"
-                            required
-                            placeholder="Command (e.g. ls -la)"
-                            onChange={handleTextChange}
-                            defaultValue={initialText}
-                        />
-                    </div>
-
-                    <div className="grid gap-1.5">
-                        <Input id="description" name="description" placeholder="Description (optional)" className="h-8 text-sm" />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
-                        <div className="grid gap-1.5">
+                        <div className="flex-1 min-w-[150px]">
                             <TagInput
                                 tags={tags}
                                 setTags={setTags}
                                 placeholder="Tags (git, docker...)"
+                                className="h-10"
                             />
-                            <input type="hidden" name="tags" value={tags.join(",")} />
                         </div>
-                        <div className="flex items-center justify-end space-x-2 h-8">
+                    </div>
+
+                    <div className="grid gap-2">
+                        <Textarea
+                            ref={textareaRef}
+                            id="text"
+                            name="text"
+                            className="font-mono text-sm resize-none overflow-hidden min-h-[40px]"
+                            required
+                            rows={1}
+                            placeholder="Command (e.g. ls -la)"
+                            value={text}
+                            onChange={(e) => {
+                                setText(e.target.value)
+                                onSearch(e.target.value)
+                                // Auto-resize
+                                e.target.style.height = 'auto'
+                                e.target.style.height = e.target.scrollHeight + 'px'
+                            }}
+                        />
+                    </div>
+
+                    <div className="flex flex-col-reverse md:flex-row items-center justify-between gap-4 pt-2">
+                        <div className="flex items-center gap-2 w-full md:w-auto">
+                            <Button type="button" variant="outline" onClick={onCancel} className="flex-1 md:flex-none">Cancel</Button>
+                            <Button type="submit" disabled={loading} className="flex-1 md:flex-none">
+                                {initialData ? "Update Command" : "Create Command"}
+                            </Button>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
                             <Switch
                                 id="visibility"
                                 checked={isPublic}
                                 onCheckedChange={setIsPublic}
-                                className="scale-75 origin-right"
                             />
-                            <Label htmlFor="visibility" className="flex items-center gap-1 cursor-pointer text-xs min-w-[60px]">
-                                {isPublic ? <Globe className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                            <Label htmlFor="visibility" className="flex items-center gap-1 cursor-pointer min-w-[60px]">
+                                {isPublic ? <Globe className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                                 {isPublic ? "Public" : "Private"}
                             </Label>
                         </div>
-                    </div>
-
-                    <div className="flex justify-end gap-2 pt-1">
-                        <Button type="button" variant="outline" size="sm" onClick={onCancel} className="h-7 text-xs">Cancel</Button>
-                        <Button type="submit" size="sm" disabled={loading} className="h-7 text-xs">Save</Button>
                     </div>
                 </form>
             </CardContent>

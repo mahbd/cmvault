@@ -9,9 +9,10 @@ interface TagInputProps {
     placeholder?: string
     tags: string[]
     setTags: (tags: string[]) => void
+    className?: string
 }
 
-export function TagInput({ placeholder, tags, setTags }: TagInputProps) {
+export function TagInput({ placeholder, tags, setTags, className }: TagInputProps) {
     const [inputValue, setInputValue] = useState("")
 
     const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -32,7 +33,7 @@ export function TagInput({ placeholder, tags, setTags }: TagInputProps) {
     }
 
     return (
-        <div className="flex flex-wrap gap-2 items-center rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-within:ring-1 focus-within:ring-ring">
+        <div className={`flex flex-wrap gap-2 items-center rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-within:ring-1 focus-within:ring-ring ${className}`}>
             {tags.map(tag => (
                 <Badge key={tag} variant="secondary" className="h-6 px-2 text-xs">
                     {tag}
