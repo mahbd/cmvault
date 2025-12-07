@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
+import Fuse from "fuse.js"
 
 export async function POST(req: NextRequest) {
     const authHeader = req.headers.get("Authorization")
@@ -34,66 +35,78 @@ export async function POST(req: NextRequest) {
     const userLearned = await prisma.commandUsage.findMany({
         where: {
             userId: user.id,
-            command: { contains: query }, // Simple contains for now, or use terms logic if needed
-            // For CommandUsage, we only have 'command' field, so multi-term check on single field:
             AND: terms.map(term => ({ command: { contains: term } }))
         },
         orderBy: { usageCount: "desc" },
         take: 10
     })
 
-    // 2. Fetch User's Saved Commands (Command)
+    // 2. Fetch User's Saved Commands (Command) - Fetch all for fuzzy search
     const userSavedWhere: any = {
         userId: user.id,
-        AND: terms.map(term => ({
-            OR: [
-                { text: { contains: term } },
-                { title: { contains: term } },
-                { description: { contains: term } },
-            ]
-        }))
     }
     if (platform) {
-        userSavedWhere.AND.push({
-            OR: [
-                { platform: { contains: platform.toLowerCase() } },
-                { platform: { contains: "others" } },
-                { platform: { equals: "" } }
-            ]
-        })
+        userSavedWhere.OR = [
+            { platform: { contains: platform.toLowerCase() } },
+            { platform: { contains: "others" } },
+            { platform: { equals: "" } }
+        ]
     }
-    const userSaved = await prisma.command.findMany({
+    const allUserSaved = await prisma.command.findMany({
         where: userSavedWhere,
-        orderBy: { usageCount: "desc" },
-        take: 10
     })
 
-    // 3. Fetch Public Commands from Others
+    // Apply Fuse.js fuzzy search on user's saved commands
+    const userSavedFuse = new Fuse(allUserSaved, {
+        keys: [
+            { name: 'text', weight: 0.5 },
+            { name: 'title', weight: 0.3 },
+            { name: 'description', weight: 0.2 }
+        ],
+        threshold: 0.4, // 0 = exact match, 1 = match anything
+        includeScore: true,
+        ignoreLocation: true,
+        useExtendedSearch: false
+    })
+    const userSavedResults = userSavedFuse.search(query)
+    const userSaved = userSavedResults
+        .map((result: any) => result.item)
+        .sort((a: any, b: any) => b.usageCount - a.usageCount)
+        .slice(0, 10)
+
+    // 3. Fetch Public Commands from Others - Fetch all for fuzzy search
     const publicOthersWhere: any = {
         userId: { not: user.id },
         visibility: "PUBLIC",
-        AND: terms.map(term => ({
-            OR: [
-                { text: { contains: term } },
-                { title: { contains: term } },
-                { description: { contains: term } },
-            ]
-        }))
     }
     if (platform) {
-        publicOthersWhere.AND.push({
-            OR: [
-                { platform: { contains: platform.toLowerCase() } },
-                { platform: { contains: "others" } },
-                { platform: { equals: "" } }
-            ]
-        })
+        publicOthersWhere.OR = [
+            { platform: { contains: platform.toLowerCase() } },
+            { platform: { contains: "others" } },
+            { platform: { equals: "" } }
+        ]
     }
-    const publicOthers = await prisma.command.findMany({
+    const allPublicOthers = await prisma.command.findMany({
         where: publicOthersWhere,
-        orderBy: { usageCount: "desc" },
-        take: 5
     })
+
+    // Apply Fuse.js fuzzy search on public commands
+    const publicOthersFuse = new Fuse(allPublicOthers, {
+        keys: [
+            { name: 'text', weight: 0.5 },
+            { name: 'title', weight: 0.3 },
+            { name: 'description', weight: 0.2 }
+        ],
+        threshold: 0.4,
+        includeScore: true,
+        ignoreLocation: true,
+        useExtendedSearch: false
+    })
+    const publicOthersResults = publicOthersFuse.search(query)
+    const publicOthers = publicOthersResults
+        .map((result: any) => result.item)
+        .sort((a: any, b: any) => b.usageCount - a.usageCount)
+        .slice(0, 5)
 
     // Combine results
     const results: string[] = []
@@ -118,8 +131,8 @@ export async function POST(req: NextRequest) {
 
     // Rest: Mix remaining Learned and Saved, ranked by usage count
     // We'll merge the remaining lists and sort them
-    const remainingLearned = userLearned.map(c => ({ text: c.command, count: c.usageCount }))
-    const remainingSaved = userSaved.map(c => ({ text: c.text, count: c.usageCount }))
+    const remainingLearned = userLearned.map((c: any) => ({ text: c.command, count: c.usageCount }))
+    const remainingSaved = userSaved.map((c: any) => ({ text: c.text, count: c.usageCount }))
 
     const pool = [...remainingLearned, ...remainingSaved]
         .sort((a, b) => b.count - a.count)
