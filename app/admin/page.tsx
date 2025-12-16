@@ -1,12 +1,17 @@
-import { prisma } from "@/lib/prisma"
+import { db } from "@/lib/db"
+import { users, commands } from "@/lib/db/schema"
+import { count, eq } from "drizzle-orm"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 export default async function AdminDashboard() {
-    const userCount = await prisma.user.count()
-    const commandCount = await prisma.command.count()
-    const publicCommandCount = await prisma.command.count({
-        where: { visibility: "PUBLIC" }
-    })
+    const [userCountResult] = await db.select({ value: count() }).from(users)
+    const userCount = userCountResult.value
+
+    const [commandCountResult] = await db.select({ value: count() }).from(commands)
+    const commandCount = commandCountResult.value
+
+    const [publicCommandCountResult] = await db.select({ value: count() }).from(commands).where(eq(commands.visibility, "PUBLIC"))
+    const publicCommandCount = publicCommandCountResult.value
 
     return (
         <div className="space-y-4">

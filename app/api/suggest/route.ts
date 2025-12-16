@@ -1,4 +1,6 @@
-import { prisma } from "@/lib/prisma"
+import { db } from "@/lib/db"
+import { commandUsages, commands, users } from "@/lib/db/schema"
+import { eq, and, or, ilike, desc, ne, like } from "drizzle-orm"
 import { NextRequest, NextResponse } from "next/server"
 import Fuse from "fuse.js"
 
@@ -9,8 +11,8 @@ export async function POST(req: NextRequest) {
     }
 
     const token = authHeader.split(" ")[1]
-    const user = await prisma.user.findUnique({
-        where: { apiToken: token },
+    const user = await db.query.users.findFirst({
+        where: eq(users.apiToken, token)
     })
 
     if (!user) {
@@ -32,28 +34,30 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Fetch User's Learned Commands (CommandUsage)
-    const userLearned = await prisma.commandUsage.findMany({
-        where: {
-            userId: user.id,
-            AND: terms.map(term => ({ command: { contains: term } }))
-        },
-        orderBy: { usageCount: "desc" },
-        take: 10
+    const userLearned = await db.query.commandUsages.findMany({
+        where: and(
+            eq(commandUsages.userId, user.id),
+            and(...terms.map(term => like(commandUsages.command, `%${term}%`)))
+        ),
+        orderBy: [desc(commandUsages.usageCount)],
+        limit: 10
     })
 
     // 2. Fetch User's Saved Commands (Command) - Fetch all for fuzzy search
-    const userSavedWhere: any = {
-        userId: user.id,
-    }
+    const userSavedConditions = [eq(commands.userId, user.id)]
+
     if (platform) {
-        userSavedWhere.OR = [
-            { platform: { contains: platform.toLowerCase() } },
-            { platform: { contains: "others" } },
-            { platform: { equals: "" } }
-        ]
+        userSavedConditions.push(
+            or(
+                ilike(commands.platform, `%${platform.toLowerCase()}%`),
+                ilike(commands.platform, "%others%"),
+                eq(commands.platform, "")
+            )!
+        )
     }
-    const allUserSaved = await prisma.command.findMany({
-        where: userSavedWhere,
+
+    const allUserSaved = await db.query.commands.findMany({
+        where: and(...userSavedConditions)
     })
 
     // Apply Fuse.js fuzzy search on user's saved commands
@@ -75,19 +79,23 @@ export async function POST(req: NextRequest) {
         .slice(0, 10)
 
     // 3. Fetch Public Commands from Others - Fetch all for fuzzy search
-    const publicOthersWhere: any = {
-        userId: { not: user.id },
-        visibility: "PUBLIC",
-    }
+    const publicOthersConditions = [
+        ne(commands.userId, user.id),
+        eq(commands.visibility, "PUBLIC")
+    ]
+
     if (platform) {
-        publicOthersWhere.OR = [
-            { platform: { contains: platform.toLowerCase() } },
-            { platform: { contains: "others" } },
-            { platform: { equals: "" } }
-        ]
+        publicOthersConditions.push(
+            or(
+                ilike(commands.platform, `%${platform.toLowerCase()}%`),
+                ilike(commands.platform, "%others%"),
+                eq(commands.platform, "")
+            )!
+        )
     }
-    const allPublicOthers = await prisma.command.findMany({
-        where: publicOthersWhere,
+
+    const allPublicOthers = await db.query.commands.findMany({
+        where: and(...publicOthersConditions)
     })
 
     // Apply Fuse.js fuzzy search on public commands

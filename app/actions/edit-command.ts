@@ -1,6 +1,8 @@
 "use server"
 
-import { prisma } from "@/lib/prisma"
+import { db } from "@/lib/db"
+import { commands, tags as tagsSchema, commandTags } from "@/lib/db/schema"
+import { eq, and } from "drizzle-orm"
 import { auth } from "@/lib/auth"
 import { headers } from "next/headers"
 import { revalidatePath } from "next/cache"
@@ -25,8 +27,8 @@ export async function updateCommand(id: string, data: z.infer<typeof commandSche
         throw new Error("Unauthorized")
     }
 
-    const command = await prisma.command.findUnique({
-        where: { id }
+    const command = await db.query.commands.findFirst({
+        where: eq(commands.id, id)
     })
 
     if (!command || command.userId !== session.user.id) {
@@ -35,53 +37,33 @@ export async function updateCommand(id: string, data: z.infer<typeof commandSche
 
     const { tags, ...rest } = data
 
-    // Transaction to update command and tags
-    await prisma.$transaction(async (tx) => {
+    await db.transaction(async (tx) => {
         // Update command details
-        await tx.command.update({
-            where: { id },
-            data: {
-                ...rest,
-            }
-        })
+        await tx.update(commands).set({
+            ...rest
+        }).where(eq(commands.id, id))
 
         // Update tags if provided
         if (tags) {
             // Remove existing tags
-            await tx.commandTag.deleteMany({
-                where: { commandId: id }
-            })
+            await tx.delete(commandTags).where(eq(commandTags.commandId, id))
 
             // Add new tags
             for (const tagName of tags) {
-                // Find or create tag
-                // Note: We need to handle tag creation carefully. 
-                // If we assume tags are global or user specific. 
-                // Let's assume user specific for now based on schema (Tag has userId).
-
-                // We can't use connectOrCreate easily with non-unique name globally.
-                // So we find first.
-                let tag = await tx.tag.findFirst({
-                    where: {
-                        name: tagName,
-                        userId: session.user.id
-                    }
-                })
+                let [tag] = await tx.select().from(tagsSchema).where(
+                    and(eq(tagsSchema.name, tagName), eq(tagsSchema.userId, session.user.id))
+                )
 
                 if (!tag) {
-                    tag = await tx.tag.create({
-                        data: {
-                            name: tagName,
-                            userId: session.user.id
-                        }
-                    })
+                    [tag] = await tx.insert(tagsSchema).values({
+                        name: tagName,
+                        userId: session.user.id
+                    }).returning()
                 }
 
-                await tx.commandTag.create({
-                    data: {
-                        commandId: id,
-                        tagId: tag.id
-                    }
+                await tx.insert(commandTags).values({
+                    commandId: id,
+                    tagId: tag.id
                 })
             }
         }

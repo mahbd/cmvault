@@ -1,6 +1,8 @@
 "use server"
 
-import { prisma } from "@/lib/prisma"
+import { db } from "@/lib/db"
+import { commands, tags as tagsSchema, commandTags } from "@/lib/db/schema"
+import { eq, desc, and } from "drizzle-orm"
 import { auth } from "@/lib/auth"
 import { headers } from "next/headers"
 import { revalidatePath } from "next/cache"
@@ -27,31 +29,32 @@ export async function createCommand(data: z.infer<typeof commandSchema>) {
 
     const { tags, ...rest } = data
 
-    const command = await prisma.command.create({
-        data: {
+    const command = await db.transaction(async (tx) => {
+        const [command] = await tx.insert(commands).values({
             ...rest,
             userId: session.user.id,
-            tags: {
-                create: tags?.map(tag => ({
-                    tag: {
-                        connectOrCreate: {
-                            where: { id: tag }, // Assuming tag is ID, but if it's name we need logic. 
-                            // Actually, let's assume tags are names for now and we create them if they don't exist.
-                            // But connectOrCreate needs a unique field. Tag name is not unique globally? 
-                            // Wait, Tag model: id, name, userId.
-                            // If tags are per user, we need to find by name AND userId.
-                            // But connectOrCreate only works on unique fields.
-                            // So we might need to do this manually or make name+userId unique.
-                            // For MVP, let's just create tags or find them.
-                            create: {
-                                name: tag,
-                                userId: session.user.id
-                            }
-                        }
-                    }
-                }))
+        }).returning()
+
+        if (tags && tags.length > 0) {
+            for (const tagName of tags) {
+                let [tag] = await tx.select().from(tagsSchema).where(
+                    and(eq(tagsSchema.name, tagName), eq(tagsSchema.userId, session.user.id))
+                )
+
+                if (!tag) {
+                    [tag] = await tx.insert(tagsSchema).values({
+                        name: tagName,
+                        userId: session.user.id
+                    }).returning()
+                }
+
+                await tx.insert(commandTags).values({
+                    commandId: command.id,
+                    tagId: tag.id
+                })
             }
         }
+        return command
     })
 
     revalidatePath("/dashboard")
@@ -64,16 +67,12 @@ export async function getCommands() {
     })
 
     if (!session) {
-        return await prisma.command.findMany({
-            where: {
-                visibility: "PUBLIC"
-            },
-            orderBy: {
-                createdAt: "desc"
-            },
-            include: {
+        return await db.query.commands.findMany({
+            where: eq(commands.visibility, "PUBLIC"),
+            orderBy: [desc(commands.createdAt)],
+            with: {
                 tags: {
-                    include: {
+                    with: {
                         tag: true
                     }
                 }
@@ -81,16 +80,12 @@ export async function getCommands() {
         })
     }
 
-    return await prisma.command.findMany({
-        where: {
-            userId: session.user.id
-        },
-        orderBy: {
-            createdAt: "desc"
-        },
-        include: {
+    return await db.query.commands.findMany({
+        where: eq(commands.userId, session.user.id),
+        orderBy: [desc(commands.createdAt)],
+        with: {
             tags: {
-                include: {
+                with: {
                     tag: true
                 }
             }
@@ -107,17 +102,15 @@ export async function deleteCommand(id: string) {
         throw new Error("Unauthorized")
     }
 
-    const command = await prisma.command.findUnique({
-        where: { id }
+    const command = await db.query.commands.findFirst({
+        where: eq(commands.id, id)
     })
 
     if (!command || command.userId !== session.user.id) {
         throw new Error("Unauthorized")
     }
 
-    await prisma.command.delete({
-        where: { id }
-    })
+    await db.delete(commands).where(eq(commands.id, id))
 
     revalidatePath("/dashboard")
 }

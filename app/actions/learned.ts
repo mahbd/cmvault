@@ -1,6 +1,9 @@
 "use server"
 
-import { prisma } from "@/lib/prisma"
+
+import { db } from "@/lib/db"
+import { commandUsages } from "@/lib/db/schema"
+import { eq, desc } from "drizzle-orm"
 import { auth } from "@/lib/auth"
 import { headers } from "next/headers"
 import { revalidatePath } from "next/cache"
@@ -14,13 +17,9 @@ export async function getLearnedCommands() {
         return []
     }
 
-    return await prisma.commandUsage.findMany({
-        where: {
-            userId: session.user.id
-        },
-        orderBy: {
-            updatedAt: "desc"
-        }
+    return await db.query.commandUsages.findMany({
+        where: eq(commandUsages.userId, session.user.id),
+        orderBy: [desc(commandUsages.updatedAt)]
     })
 }
 
@@ -33,17 +32,15 @@ export async function deleteLearnedCommand(id: string) {
         throw new Error("Unauthorized")
     }
 
-    const usage = await prisma.commandUsage.findUnique({
-        where: { id }
+    const usage = await db.query.commandUsages.findFirst({
+        where: eq(commandUsages.id, id)
     })
 
     if (!usage || usage.userId !== session.user.id) {
         throw new Error("Unauthorized")
     }
 
-    await prisma.commandUsage.delete({
-        where: { id }
-    })
+    await db.delete(commandUsages).where(eq(commandUsages.id, id))
 
     revalidatePath("/learned")
 }

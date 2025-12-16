@@ -1,5 +1,8 @@
-import { prisma } from "@/lib/prisma"
+import { db } from "@/lib/db"
+import { users } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { NextRequest, NextResponse } from "next/server"
+import crypto from "crypto"
 
 export async function POST(req: NextRequest) {
     try {
@@ -11,8 +14,8 @@ export async function POST(req: NextRequest) {
         }
 
         // Find user with this code
-        const user = await prisma.user.findFirst({
-            where: { tempCode: code }
+        const user = await db.query.users.findFirst({
+            where: eq(users.tempCode, code)
         })
 
         if (!user || !user.tempAuthCodeCreatedAt) {
@@ -30,18 +33,18 @@ export async function POST(req: NextRequest) {
         // Check if user has an API token, if not generate one
         let token = user.apiToken
         if (!token) {
-            const crypto = require("crypto")
             token = `cmv_${crypto.randomBytes(32).toString("hex")}`
-            await prisma.user.update({
-                where: { id: user.id },
-                data: { apiToken: token, tempCode: null, tempAuthCodeCreatedAt: null } // Clear code after use
-            })
+            await db.update(users).set({
+                apiToken: token,
+                tempCode: null,
+                tempAuthCodeCreatedAt: null
+            }).where(eq(users.id, user.id))
         } else {
             // Just clear the code
-            await prisma.user.update({
-                where: { id: user.id },
-                data: { tempCode: null, tempAuthCodeCreatedAt: null }
-            })
+            await db.update(users).set({
+                tempCode: null,
+                tempAuthCodeCreatedAt: null
+            }).where(eq(users.id, user.id))
         }
 
         return NextResponse.json({ token })

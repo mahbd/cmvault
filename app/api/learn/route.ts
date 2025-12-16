@@ -1,4 +1,6 @@
-import { prisma } from "@/lib/prisma"
+import { db } from "@/lib/db"
+import { commandUsages, commands, users } from "@/lib/db/schema"
+import { eq, and, sql } from "drizzle-orm"
 import { NextRequest, NextResponse } from "next/server"
 
 interface ContextEntry {
@@ -15,8 +17,8 @@ export async function POST(req: NextRequest) {
     }
 
     const token = authHeader.split(" ")[1]
-    const user = await prisma.user.findUnique({
-        where: { apiToken: token },
+    const user = await db.query.users.findFirst({
+        where: eq(users.apiToken, token)
     })
 
     if (!user) {
@@ -52,13 +54,11 @@ export async function POST(req: NextRequest) {
 
     try {
         // Try to find existing first
-        const existing = await prisma.commandUsage.findUnique({
-            where: {
-                userId_command: {
-                    userId: user.id,
-                    command: executed_command,
-                },
-            },
+        const existing = await db.query.commandUsages.findFirst({
+            where: and(
+                eq(commandUsages.userId, user.id),
+                eq(commandUsages.command, executed_command)
+            )
         })
 
         if (existing) {
@@ -72,39 +72,32 @@ export async function POST(req: NextRequest) {
 
             const updatedContext = updateContext(context, pwd, ls_output, os)
 
-            await prisma.commandUsage.update({
-                where: { id: existing.id },
-                data: {
-                    context: JSON.stringify(updatedContext),
-                    os: os || existing.os,
-                    usageCount: { increment: 1 },
-                },
-            })
+            await db.update(commandUsages).set({
+                context: JSON.stringify(updatedContext),
+                os: os || existing.os,
+                usageCount: sql`${commandUsages.usageCount} + 1`
+            }).where(eq(commandUsages.id, existing.id))
         } else {
             // Try to create
             const initialContext = updateContext([], pwd, ls_output, os)
 
-            await prisma.commandUsage.create({
-                data: {
-                    command: executed_command,
-                    userId: user.id,
-                    os,
-                    context: JSON.stringify(initialContext),
-                    usageCount: 1,
-                },
+            await db.insert(commandUsages).values({
+                command: executed_command,
+                userId: user.id,
+                os,
+                context: JSON.stringify(initialContext),
+                usageCount: 1,
             })
         }
     } catch (error: any) {
-        // Handle race condition: unique constraint failed (P2002)
-        if (error.code === 'P2002') {
+        // Handle race condition: unique constraint failed (23505 in postgres)
+        if (error.code === '23505') {
             // Record was created by another request in the meantime, so update it
-            const existing = await prisma.commandUsage.findUnique({
-                where: {
-                    userId_command: {
-                        userId: user.id,
-                        command: executed_command,
-                    },
-                },
+            const existing = await db.query.commandUsages.findFirst({
+                where: and(
+                    eq(commandUsages.userId, user.id),
+                    eq(commandUsages.command, executed_command)
+                )
             })
 
             if (existing) {
@@ -118,14 +111,11 @@ export async function POST(req: NextRequest) {
 
                 const updatedContext = updateContext(context, pwd, ls_output, os)
 
-                await prisma.commandUsage.update({
-                    where: { id: existing.id },
-                    data: {
-                        context: JSON.stringify(updatedContext),
-                        os: os || existing.os,
-                        usageCount: { increment: 1 },
-                    },
-                })
+                await db.update(commandUsages).set({
+                    context: JSON.stringify(updatedContext),
+                    os: os || existing.os,
+                    usageCount: sql`${commandUsages.usageCount} + 1`
+                }).where(eq(commandUsages.id, existing.id))
             }
         } else {
             throw error
@@ -133,18 +123,17 @@ export async function POST(req: NextRequest) {
     }
 
     // Increment usage count in Command table if it exists
-    const existingCommand = await prisma.command.findFirst({
-        where: {
-            userId: user.id,
-            text: executed_command,
-        },
+    const existingCommand = await db.query.commands.findFirst({
+        where: and(
+            eq(commands.userId, user.id),
+            eq(commands.text, executed_command)
+        )
     })
 
     if (existingCommand) {
-        await prisma.command.update({
-            where: { id: existingCommand.id },
-            data: { usageCount: { increment: 1 } },
-        })
+        await db.update(commands).set({
+            usageCount: sql`${commands.usageCount} + 1`
+        }).where(eq(commands.id, existingCommand.id))
     }
 
     return NextResponse.json({ success: true })

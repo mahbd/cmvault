@@ -1,6 +1,8 @@
 "use server"
 
-import { prisma } from "@/lib/prisma"
+import { db } from "@/lib/db"
+import { users } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 import { auth } from "@/lib/auth"
 import { revalidatePath } from "next/cache"
 import crypto from "crypto"
@@ -12,9 +14,9 @@ export async function getApiToken() {
     })
     if (!session?.user?.id) return null
 
-    const user = await prisma.user.findUnique({
-        where: { id: session.user.id },
-        select: { apiToken: true }
+    const user = await db.query.users.findFirst({
+        where: eq(users.id, session.user.id),
+        columns: { apiToken: true }
     })
 
     return user?.apiToken ?? null
@@ -28,10 +30,9 @@ export async function generateApiToken() {
 
     const token = `cmv_${crypto.randomBytes(32).toString("hex")}`
 
-    await prisma.user.update({
-        where: { id: session.user.id },
-        data: { apiToken: token },
-    })
+    await db.update(users).set({
+        apiToken: token
+    }).where(eq(users.id, session.user.id))
 
     revalidatePath("/dashboard")
     return token
@@ -43,10 +44,9 @@ export async function revokeApiToken() {
     })
     if (!session?.user?.id) throw new Error("Unauthorized")
 
-    await prisma.user.update({
-        where: { id: session.user.id },
-        data: { apiToken: null },
-    })
+    await db.update(users).set({
+        apiToken: null
+    }).where(eq(users.id, session.user.id))
 
     revalidatePath("/dashboard")
 }
@@ -60,13 +60,10 @@ export async function generateTempCode() {
     // Generate 6 digit code
     const code = Math.floor(100000 + Math.random() * 900000).toString()
 
-    await prisma.user.update({
-        where: { id: session.user.id },
-        data: {
-            tempCode: code,
-            tempAuthCodeCreatedAt: new Date()
-        },
-    })
+    await db.update(users).set({
+        tempCode: code,
+        tempAuthCodeCreatedAt: new Date()
+    }).where(eq(users.id, session.user.id))
 
     return code
 }
