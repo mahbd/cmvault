@@ -26,12 +26,33 @@ CMVault is a powerful command management system designed for developers. It serv
 *   **API Tokens**: Generate secure API tokens for CLI access.
 *   **Device Code Flow**: Easily authenticate new terminal devices using a 6-digit temporary code—no need to copy-paste long tokens!
 
+## 🛠️ Tech Stack
+
+**Frontend & Backend**:
+- **Next.js 16** - React framework for production
+- **TypeScript** - Type-safe development
+- **Tailwind CSS** - Utility-first CSS framework
+- **React Hook Form** - Efficient form handling
+
+**Database & ORM**:
+- **PostgreSQL** - Relational database
+- **Drizzle ORM** - Type-safe database layer
+
+**Authentication**:
+- **Better Auth** - Modern authentication framework
+- **Google OAuth** - Passwordless authentication
+
+**UI Components**:
+- **Radix UI** - Accessible React components
+- **Sonner** - Toast notifications
+- **Lucide React** - Icon library
+
 ## 🛠️ Installation
 
 ### Web Application (Self-Hosting)
 1.  **Clone the repo**:
     ```bash
-    git clone https://github.com/yourusername/cmvault.git
+    git clone https://github.com/mahbd/cmvault.git
     cd cmvault
     ```
 2.  **Install dependencies**:
@@ -40,14 +61,17 @@ CMVault is a powerful command management system designed for developers. It serv
     ```
 3.  **Setup Environment**:
     Copy `.env.example` to `.env` and configure your database (SQLite/Postgres) and auth providers.
-4.  **Run Migrations**:
+4.  **Sync Database Schema**:
     ```bash
-    npx prisma db push
+    npx drizzle-kit push
     ```
-5.  **Start the Server**:
+    This command will automatically create all necessary tables in your PostgreSQL database.
+
+5.  **Start the Development Server**:
     ```bash
     npm run dev
     ```
+    The server will start on http://localhost:3000 (or next available port)
 
 ### Terminal Plugin (Client)
 To install the autocompleter in your Zsh shell:
