@@ -1,0 +1,24 @@
+{
+  "name": "cmvault-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --host --port 5173",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-auto": "^7.0.0",
+    "@sveltejs/kit": "^2.50.1",
+    "@sveltejs/vite-plugin-svelte": "^5.1.1",
+    "@typescript-eslint/types": "^8.20.0",
+    "@types/node": "^25.0.10",
+    "svelte": "^5.2.8",
+    "svelte-check": "^4.1.4",
+    "tslib": "^2.8.1",
+    "typescript": "^5.6.3",
+    "vite": "^6.4.1"
+  }
+}

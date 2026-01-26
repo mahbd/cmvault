@@ -1,119 +1,65 @@
-# CMVault - The Developer's Command Vault
+# CMVault - Rust + Svelte Edition
 
-CMVault is a powerful command management system designed for developers. It serves as a central repository for your most used, complex, or hard-to-remember shell commands, offering intelligent autocompletion directly in your terminal.
+The project now runs on a lightweight Rust backend (Actix Web + SQLx + PostgreSQL) with a Svelte UI. The terminal autocompleter still talks to the same API surface (`/api/suggest`, `/api/learn`, etc.) but everything is backed by Rust.
 
-## 🌐 Live Demo
-**[https://cmd.mahmudul.com.bd](https://cmd.mahmudul.com.bd)**
+## Stack
+- **Backend:** Rust, Actix Web, SQLx, PostgreSQL
+- **Frontend:** SvelteKit, Vite
+- **Auth:** API tokens via `Authorization: Bearer <token>` header
+- **Terminal:** Zsh plugin in `autocompleter/` still works against the new API
 
-## ✨ Features
+Legacy Next.js files have been parked under `legacy-next/` for reference.
 
-### 🚀 Smart Command Management
-*   **Centralized Storage**: Keep all your snippets, scripts, and one-liners in one place.
-*   **Multi-Platform Support**: Tag commands for specific OSs (Linux, macOS, Windows) or make them universal.
-*   **Privacy Control**: Toggle commands between Public (sharable) and Private.
-*   **Tagging System**: Organize commands with custom tags for easy filtering.
+## Quickstart
+1. **Env:** copy `.env.example` to `.env` and set:
+   - `DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/cmvault`
+   - `ADMIN_API_TOKEN=<strong token>` (bootstraps an API token)
+   - Frontend reads `VITE_API_URL` and `VITE_API_TOKEN` for requests.
 
-### 💻 Intelligent Terminal Autocompleter
-*   **Zsh Integration**: A robust Zsh plugin that integrates directly with your shell.
-*   **Real-time Suggestions**: Get command suggestions as you type based on your personalized vault.
-*   **Context Aware**: Auto-fetches suggestions relevant to your current workflow.
-*   **Non-Blocking & Async**: Suggestions are fetched asynchronously to ensure zero typing lag.
-*   **Persistent Caching**: Stale-while-revalidate caching ensures instant feedback even with slow networks.
-*   **Smart Learning Mode**: Optionally captures executed commands to suggest them later ("Learn" -> "Promote" workflow).
+2. **Backend (Actix):**
+   ```bash
+   cd backend
+   cargo run
+   ```
+   Migrations run automatically on startup. Default bind is `0.0.0.0:8080`.
 
-### 🔒 Secure Authentication
-*   **Modern Auth**: Supports Google OAuth for passwordless login.
-*   **API Tokens**: Generate secure API tokens for CLI access.
-*   **Device Code Flow**: Easily authenticate new terminal devices using a 6-digit temporary code—no need to copy-paste long tokens!
+3. **Frontend (Svelte):**
+   ```bash
+   cd frontend
+   npm install
+   npm run dev -- --host
+   ```
+   Point the UI at the backend via `VITE_API_URL`/`VITE_API_TOKEN` (read from the repo root `.env` because Vite is configured with `envDir: '..'`).
 
-## 🛠️ Tech Stack
+## Database migrations
+- Migrations live in `backend/migrations/` and are applied automatically when you run `cargo run` in `backend/`.
+- To run them manually, install SQLx CLI and execute:
+  ```bash
+  cd backend
+  cargo install sqlx-cli --no-default-features --features native-tls,postgres
+  sqlx migrate run
+  ```
 
-**Frontend & Backend**:
-- **Next.js 16** - React framework for production
-- **TypeScript** - Type-safe development
-- **Tailwind CSS** - Utility-first CSS framework
-- **React Hook Form** - Efficient form handling
+## API surface
+- `GET /health` – heartbeat
+- `GET /api/commands?q=` – list commands (public + your token)
+- `POST /api/commands` – create command (requires token)
+- `DELETE /api/commands/:id` – delete your command
+- `POST /api/suggest` – suggestion strings for the autocompleter
+- `POST /api/learn` – log executed command
+- `GET /api/learned` – list learned snippets (paginated via `limit`/`offset`)
+- `POST /api/learned/:id/promote` – turn learned item into a saved command
+- `POST /api/device-codes` – create a 6-digit code for pairing
+- `POST /api/exchange-token` – swap a code for an API token
+- `POST /api/register` – email/password signup, returns a personal API token
+- `POST /api/login` – email/password login, returns a fresh API token
 
-**Database & ORM**:
-- **PostgreSQL** - Relational database
-- **Drizzle ORM** - Type-safe database layer
+## Autocompleter
+The Zsh plugin in `autocompleter/install.sh` keeps working. Flow with the new auth:
+- Get a token: login/register in the web UI, then create an API token (or create a 6-digit device code via the UI/API).
+- Run the installer and paste the token or device code when prompted; device codes are swapped via `POST /api/exchange-token`.
+- Suggestions: `POST /api/suggest` with your token.
+- Learning mode: `POST /api/learn`.
 
-**Authentication**:
-- **Better Auth** - Modern authentication framework
-- **Google OAuth** - Passwordless authentication
-
-**UI Components**:
-- **Radix UI** - Accessible React components
-- **Sonner** - Toast notifications
-- **Lucide React** - Icon library
-
-## 🛠️ Installation
-
-### Web Application (Self-Hosting)
-1.  **Clone the repo**:
-    ```bash
-    git clone https://github.com/mahbd/cmvault.git
-    cd cmvault
-    ```
-2.  **Install dependencies**:
-    ```bash
-    npm install
-    ```
-3.  **Setup Environment**:
-    Copy `.env.example` to `.env` and configure your database (SQLite/Postgres) and auth providers.
-4.  **Sync Database Schema**:
-    ```bash
-    npx drizzle-kit push
-    ```
-    This command will automatically create all necessary tables in your PostgreSQL database.
-
-5.  **Start the Development Server**:
-    ```bash
-    npm run dev
-    ```
-    The server will start on http://localhost:3000 (or next available port)
-
-### Terminal Plugin (Client)
-To install the autocompleter in your Zsh shell:
-
-1.  **Run the Installer**:
-    ```bash
-    bash <(curl -s https://raw.githubusercontent.com/mahbd/cmvault/main/autocompleter/install.sh)
-    ```
-    *(Replace URL with your self-hosted instance if applicable)*
-
-2.  **Authenticate**:
-    The installer will ask for your **API Token** or a **6-Digit Device Code**.
-    *   Go to **Settings** on the web dashboard to generate a code.
-    *   Enter it in the terminal to instantly link your device.
-
-3.  **Restart Shell**:
-    ```bash
-    source ~/.zshrc
-    ```
-
-## 📖 Usage Guide
-
-### Using the Dashboard
-*   **Create**: Press `+` or click "Add Command". Enter title, command, platform, and tags.
-*   **Filter**: Use the platform dropdown to see commands for your specific OS.
-*   **Search**: Press `/` to focus the search bar. Fuzzy search finds commands by keywords.
-*   **Edit/Delete**: Managing existing commands is just a click away.
-
-### Using the Autocompleter
-Just start typing!
-*   **Ghost Text**: Suggestions appear in gray.
-*   **Cycle Options**: Use `Up` / `Down` arrows to cycle through multiple matching commands.
-*   **Accept**: Press `Right Arrow` to accept a suggestion.
-
-### Learning Mode
-If enabled during installation, CMVault captures commands you execute.
-1.  Run commands as usual in your terminal.
-2.  Visit the **Learned** page in the dashboard.
-3.  Click **Promote** to turn a captured command into a permanent, sharable snippet in your vault.
-
-## 🤝 Contributing
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📄 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## License
+MIT – see [LICENSE](LICENSE).

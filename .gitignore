@@ -2,6 +2,10 @@
 
 # dependencies
 /node_modules
+/frontend/node_modules
+/frontend/.svelte-kit
+/frontend/build
+/frontend/.vite
 /.pnp
 .pnp.*
 .yarn/*
@@ -10,10 +14,13 @@
 !.yarn/releases
 !.yarn/versions
 
+# rust
+/backend/target
+
 # testing
 /coverage
 
-# next.js
+# next.js (legacy)
 /.next/
 /out/
 
