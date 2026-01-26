@@ -60,6 +60,20 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     return undefined as T;
   }
 
+  // Some endpoints return 201 with an empty body; guard against JSON parse errors.
+  const contentLength = res.headers.get('content-length');
+  if (contentLength === '0' || contentLength === null) {
+    try {
+      const text = await res.text();
+      if (!text.trim()) {
+        return undefined as T;
+      }
+      return JSON.parse(text) as T;
+    } catch {
+      return undefined as T;
+    }
+  }
+
   return res.json() as Promise<T>;
 }
 
