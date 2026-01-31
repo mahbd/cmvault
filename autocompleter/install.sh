@@ -91,7 +91,7 @@ CMVAULT_TOKEN_FILE="$HOME/.config/cmvault/token"
 
 : ${CMVAULT_DEBOUNCE:=0.35}
 : ${CMVAULT_TIMEOUT:=5.0}
-: ${CMVAULT_MAX_SUGGESTIONS:=6}
+: ${CMVAULT_MAX_SUGGESTIONS:=10}
 
 # ---- config ----
 [[ -f "$CMVAULT_URL_FILE" && -f "$CMVAULT_TOKEN_FILE" ]] || return
