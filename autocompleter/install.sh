@@ -324,6 +324,31 @@ bindkey '^[[1;5A' _cycle_up
 bindkey '^[[1;5B' _cycle_down
 bindkey '^[[C' _accept
 bindkey '^[OC' _accept
+
+_cmvault_preexec() {
+    # Check if learning is enabled
+    if [[ -f "$CMVAULT_LEARN_FILE" ]]; then
+        local learn_enabled=$(cat "$CMVAULT_LEARN_FILE")
+        if [[ "$learn_enabled" != "true" ]]; then
+            return
+        fi
+    fi
+
+    local cmd="$1"
+    local os=$(uname -s)
+    local pwd="$PWD"
+    # Capture ls output (limit to first 20 lines)
+    local ls_output=$(ls -1 2>/dev/null | head -n 20)
+    ls_output="${ls_output//$'\n'/\\n}"
+    (curl -s -X POST "${CMVAULT_API_URL}/api/learn" \
+        -H "Authorization: Bearer ${CMVAULT_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d "{\"executed_command\": \"$cmd\", \"os\": \"$os\", \"pwd\": \"$pwd\", \"ls_output\": \"$ls_output\"}" &) >/dev/null 2>&1
+}
+
+autoload -U add-zsh-hook
+add-zsh-hook preexec _cmvault_preexec
+
 EOF
 
 # Add to .zshrc
