@@ -24,6 +24,7 @@ pub struct Command {
     pub owner_token: Uuid,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -38,6 +39,7 @@ pub struct CommandWithTags {
     pub usage_count: i32,
     pub tags: Vec<String>,
     pub created_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -93,6 +95,7 @@ pub struct LearnedCommand {
     pub owner_token: Uuid,
     pub usage_count: i32,
     pub created_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -135,4 +138,11 @@ pub struct AuthResponse {
 pub struct HealthResponse {
     pub status: String,
     pub version: String,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct SuggestionRow {
+    pub text: String,
+    // We don't return these to the client, but we use them for debugging/sorting if needed
+    pub score: Option<f64>,
 }

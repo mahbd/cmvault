@@ -18,7 +18,7 @@ use crate::{
     models::{
         AuthResponse, Command, CommandPayload, CommandWithTags, DeviceCodeResponse,
         ExchangeTokenRequest, ExchangeTokenResponse, HealthResponse, LearnRequest, LearnedCommand,
-        LoginRequest, PromotePayload, RegisterRequest, SuggestRequest,
+        LoginRequest, PromotePayload, RegisterRequest, SuggestRequest, SuggestionRow,
     },
     state::AppState,
 };
@@ -167,7 +167,7 @@ pub async fn list_commands(
 
     let mut builder = QueryBuilder::new(
         r#"
-        SELECT id, title, text, description, platform, visibility, favorite, usage_count, owner_token, created_at, updated_at
+        SELECT id, title, text, description, platform, visibility, favorite, usage_count, owner_token, created_at, updated_at, last_used_at
         FROM commands
         WHERE 1=1
     "#,
@@ -250,6 +250,7 @@ pub async fn list_commands(
             usage_count: c.usage_count,
             tags: tags.get(&c.id).cloned().unwrap_or_default(),
             created_at: c.created_at,
+            last_used_at: c.last_used_at,
         })
         .collect();
 
@@ -287,9 +288,9 @@ pub async fn create_command(
     sqlx::query(
         r#"
         INSERT INTO commands (
-            id, title, text, description, platform, visibility, favorite, usage_count, owner_token, created_at, updated_at
+            id, title, text, description, platform, visibility, favorite, usage_count, owner_token, created_at, updated_at, last_used_at
         ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $10
         )
         "#,
     )
@@ -346,6 +347,7 @@ pub async fn create_command(
         usage_count: 0,
         tags: tags.get(&command_id).cloned().unwrap_or_default(),
         created_at: now,
+        last_used_at: Some(now),
     };
 
     Ok(HttpResponse::Created().json(response))
@@ -376,50 +378,95 @@ pub async fn delete_command(
 
 #[post("/api/suggest")]
 pub async fn suggest_commands(
-    state: Data<AppState>,
+    state: web::Data<AppState>,
     req: HttpRequest,
     payload: web::Json<SuggestRequest>,
 ) -> Result<HttpResponse, ApiError> {
     let pool = &state.pool;
     let token = auth::optional_token(&req, pool).await?;
-    let term = format!("%{}%", payload.query);
-    // Optional contextual fields are accepted for future relevance scoring.
-    let _ = (&payload.os, &payload.pwd);
 
-    let rows = if let Some(tok) = token.as_ref() {
-        sqlx::query(
-            r#"
-            SELECT text
-            FROM commands
-            WHERE (owner_token = $1 OR visibility = 'PUBLIC')
-              AND text ILIKE $2
-            ORDER BY usage_count DESC, created_at DESC
-            LIMIT 10
-            "#,
-        )
-        .bind(tok.id)
-        .bind(&term)
-        .fetch_all(pool)
-        .await?
-    } else {
-        sqlx::query(
-            r#"
-            SELECT text
-            FROM commands
-            WHERE visibility = 'PUBLIC' AND text ILIKE $1
-            ORDER BY usage_count DESC, created_at DESC
-            LIMIT 10
-            "#,
-        )
-        .bind(&term)
-        .fetch_all(pool)
-        .await?
-    };
+    // 1. Prepare search terms
+    let query_input = payload.query.trim();
+    if query_input.is_empty() {
+        return Ok(HttpResponse::Ok().json(Vec::<String>::new()));
+    }
 
-    let suggestions: Vec<String> = rows
-        .into_iter()
-        .filter_map(|row| row.try_get::<String, _>("text").ok())
-        .collect();
+    // Patterns for SQL
+    let starts_with = format!("{}%", query_input); // High priority
+    let contains = format!("%{}%", query_input);   // Low priority
+
+    // 2. Resolve Context
+    let os_filter = payload.os.as_deref().unwrap_or("%"); // Wildcard if no OS provided
+    // 3. Define the User ID (use a dummy UUID or handle None if user is guest)
+    // If no token, we can't search learned_commands (private), so we use a null placeholder
+    let user_id = token.as_ref().map(|t| t.id);
+
+    // 4. Execute the Hybrid Query
+    // Uses trigram similarity (pg_trgm) for fuzzy matching and last_used_at for recency
+    let rows = sqlx::query_as::<_, SuggestionRow>(
+        r#"
+        WITH combined_results AS (
+            -- SOURCE 1: Saved Commands (Curated)
+            SELECT
+                text,
+                usage_count,
+                COALESCE(last_used_at, created_at) as last_used_at,
+                platform as os,
+                -- Score Boosts
+                20.0 as base_score, -- Saved commands get a baseline boost over random history
+                CASE WHEN text ILIKE $2 THEN 50.0 ELSE 0.0 END as prefix_bonus,
+                -- Trigram similarity score (0.0 to 1.0) scaled to 0-30 points
+                (similarity(text, $5) * 30.0) as trgm_score
+            FROM commands
+            WHERE (visibility = 'PUBLIC' OR owner_token = $1)
+              AND (text ILIKE $3 OR similarity(text, $5) > 0.1)
+
+            UNION ALL
+
+            -- SOURCE 2: Learned Commands (History)
+            -- Only queried if user_id ($1) is NOT NULL (Handled via WHERE clause)
+            SELECT
+                content as text,
+                usage_count,
+                COALESCE(last_used_at, created_at) as last_used_at,
+                os,
+                -- Score Boosts
+                0.0 as base_score,
+                CASE WHEN content ILIKE $2 THEN 50.0 ELSE 0.0 END as prefix_bonus,
+                -- Trigram similarity score (0.0 to 1.0) scaled to 0-30 points
+                (similarity(content, $5) * 30.0) as trgm_score
+            FROM learned_commands
+            WHERE owner_token = $1
+              AND (content ILIKE $3 OR similarity(content, $5) > 0.1)
+              -- Context Filter: heavily prefer current OS, or allow if OS is generic
+              AND (os IS NULL OR os ILIKE $4)
+        )
+        SELECT
+            text,
+            -- Calculate Final Relevance Score
+            SUM(
+                base_score +
+                prefix_bonus +
+                trgm_score +
+                (usage_count::float * 2.0) +
+                -- Recency Bonus: more points for recently used items (last 7 days = max bonus)
+                GREATEST(0.0, 25.0 - (EXTRACT(EPOCH FROM (now() - last_used_at)) / 86400.0 / 7.0 * 25.0))
+            ) as score
+        FROM combined_results
+        GROUP BY text -- Deduplicate: merge identical commands from saved/learned
+        ORDER BY score DESC
+        LIMIT 10
+        "#
+    )
+    .bind(user_id)          // $1
+    .bind(&starts_with)     // $2 (Prefix match)
+    .bind(&contains)        // $3 (Broad match)
+    .bind(os_filter)        // $4 (OS Context)
+    .bind(query_input)      // $5 (Trigram similarity input)
+    .fetch_all(pool)
+    .await?;
+
+    let suggestions: Vec<String> = rows.into_iter().map(|r| r.text).collect();
 
     Ok(HttpResponse::Ok().json(suggestions))
 }
@@ -438,6 +485,8 @@ pub async fn learn_command(
         return Err(ApiError::BadRequest("executed_command is required".into()));
     }
 
+    let now = Utc::now();
+
     let existing = sqlx::query(
         r#"SELECT id, usage_count FROM learned_commands WHERE owner_token = $1 AND content = $2"#,
     )
@@ -449,16 +498,17 @@ pub async fn learn_command(
     if let Some(row) = existing {
         let usage = row.try_get::<i32, _>("usage_count").unwrap_or(1) + 1;
         let id: Uuid = row.try_get("id").unwrap();
-        sqlx::query("UPDATE learned_commands SET usage_count = $1 WHERE id = $2")
+        sqlx::query("UPDATE learned_commands SET usage_count = $1, last_used_at = $2 WHERE id = $3")
             .bind(usage)
+            .bind(now)
             .bind(id)
             .execute(pool)
             .await?;
     } else {
         sqlx::query(
             r#"
-            INSERT INTO learned_commands (id, content, os, pwd, ls_output, owner_token, usage_count, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            INSERT INTO learned_commands (id, content, os, pwd, ls_output, owner_token, usage_count, created_at, last_used_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             "#,
         )
         .bind(Uuid::new_v4())
@@ -468,10 +518,21 @@ pub async fn learn_command(
         .bind(&payload.ls_output)
         .bind(token.id)
         .bind(1_i32)
-        .bind(Utc::now())
+        .bind(now)
+        .bind(now)
         .execute(pool)
         .await?;
     }
+
+    // Also update last_used_at for any matching command in the commands table
+    sqlx::query(
+        "UPDATE commands SET last_used_at = $1, usage_count = usage_count + 1 WHERE owner_token = $2 AND text = $3",
+    )
+    .bind(now)
+    .bind(token.id)
+    .bind(content)
+    .execute(pool)
+    .await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "ok" })))
 }
@@ -489,10 +550,10 @@ pub async fn list_learned(
 
     let rows = sqlx::query_as::<_, LearnedCommand>(
         r#"
-        SELECT id, content, os, pwd, ls_output, owner_token, usage_count, created_at
+        SELECT id, content, os, pwd, ls_output, owner_token, usage_count, created_at, last_used_at
         FROM learned_commands
         WHERE owner_token = $1
-        ORDER BY usage_count DESC, created_at DESC
+        ORDER BY last_used_at DESC NULLS LAST, usage_count DESC, created_at DESC
         LIMIT $2 OFFSET $3
         "#,
     )
@@ -530,7 +591,7 @@ pub async fn promote_learned(
 
     let learned = sqlx::query_as::<_, LearnedCommand>(
         r#"
-        SELECT id, content, os, pwd, ls_output, owner_token, usage_count, created_at
+        SELECT id, content, os, pwd, ls_output, owner_token, usage_count, created_at, last_used_at
         FROM learned_commands
         WHERE id = $1 AND owner_token = $2
         "#,
@@ -559,9 +620,9 @@ pub async fn promote_learned(
     sqlx::query(
         r#"
         INSERT INTO commands (
-            id, title, text, description, platform, visibility, favorite, usage_count, owner_token, created_at, updated_at
+            id, title, text, description, platform, visibility, favorite, usage_count, owner_token, created_at, updated_at, last_used_at
         ) VALUES (
-            $1, $2, $3, $4, $5, $6, false, $7, $8, $9, $9
+            $1, $2, $3, $4, $5, $6, false, $7, $8, $9, $9, $10
         )
         "#,
     )
@@ -574,6 +635,7 @@ pub async fn promote_learned(
     .bind(learned.usage_count)
     .bind(token.id)
     .bind(now)
+    .bind(learned.last_used_at.unwrap_or(now))
     .execute(pool)
     .await?;
 
