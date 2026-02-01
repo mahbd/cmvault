@@ -273,3 +273,92 @@ textarea {
   border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
   color: var(--accent);
 }
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 1.1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.brand strong {
+  display: block;
+}
+
+.brand small {
+  color: var(--muted);
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 6px var(--accent-soft);
+}
+
+.nav-links {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: center;
+}
+
+.nav-links a {
+  padding: 0.65rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  color: #e6edf5;
+  font-weight: 600;
+}
+
+.nav-links a:hover {
+  background: var(--panel-strong);
+  border-color: var(--border);
+}
+
+.nav-links a.active {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  color: #ffd599;
+}
+
+.top-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-row {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem 0.5rem;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.status.error {
+  border-color: #ef4444;
+  color: #fca5a5;
+}

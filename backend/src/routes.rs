@@ -393,12 +393,12 @@ pub async fn suggest_commands(
 
     // Patterns for SQL
     let starts_with = format!("{}%", query_input); // High priority
-    let contains = format!("%{}%", query_input);   // Low priority
+    let contains = format!("%{}%", query_input); // Low priority
 
     // 2. Resolve Context
     let os_filter = payload.os.as_deref().unwrap_or("%"); // Wildcard if no OS provided
-    // 3. Define the User ID (use a dummy UUID or handle None if user is guest)
-    // If no token, we can't search learned_commands (private), so we use a null placeholder
+                                                          // 3. Define the User ID (use a dummy UUID or handle None if user is guest)
+                                                          // If no token, we can't search learned_commands (private), so we use a null placeholder
     let user_id = token.as_ref().map(|t| t.id);
 
     // 4. Execute the Hybrid Query
@@ -498,12 +498,14 @@ pub async fn learn_command(
     if let Some(row) = existing {
         let usage = row.try_get::<i32, _>("usage_count").unwrap_or(1) + 1;
         let id: Uuid = row.try_get("id").unwrap();
-        sqlx::query("UPDATE learned_commands SET usage_count = $1, last_used_at = $2 WHERE id = $3")
-            .bind(usage)
-            .bind(now)
-            .bind(id)
-            .execute(pool)
-            .await?;
+        sqlx::query(
+            "UPDATE learned_commands SET usage_count = $1, last_used_at = $2 WHERE id = $3",
+        )
+        .bind(usage)
+        .bind(now)
+        .bind(id)
+        .execute(pool)
+        .await?;
     } else {
         sqlx::query(
             r#"
@@ -547,27 +549,37 @@ pub async fn list_learned(
     let token = auth::require_token(&req, pool).await?;
     let limit = query.limit.unwrap_or(20).clamp(1, 200);
     let offset = query.offset.unwrap_or(0).max(0);
+    let search = query.q.as_ref().map(|s| format!("%{}%", s));
 
     let rows = sqlx::query_as::<_, LearnedCommand>(
         r#"
         SELECT id, content, os, pwd, ls_output, owner_token, usage_count, created_at, last_used_at
         FROM learned_commands
         WHERE owner_token = $1
+          AND ($2::text IS NULL OR content ILIKE $2)
         ORDER BY last_used_at DESC NULLS LAST, usage_count DESC, created_at DESC
-        LIMIT $2 OFFSET $3
+        LIMIT $3 OFFSET $4
         "#,
     )
     .bind(token.id)
+    .bind(search.as_deref())
     .bind(limit)
     .bind(offset)
     .fetch_all(pool)
     .await?;
 
-    let total_row =
-        sqlx::query(r#"SELECT count(*) as total FROM learned_commands WHERE owner_token = $1"#)
-            .bind(token.id)
-            .fetch_one(pool)
-            .await?;
+    let total_row = sqlx::query(
+        r#"
+        SELECT count(*) as total
+        FROM learned_commands
+        WHERE owner_token = $1
+          AND ($2::text IS NULL OR content ILIKE $2)
+        "#,
+    )
+    .bind(token.id)
+    .bind(search.as_deref())
+    .fetch_one(pool)
+    .await?;
     let total: i64 = total_row.try_get("total").unwrap_or(0);
 
     Ok(HttpResponse::Ok().json(crate::models::Page {
@@ -667,6 +679,29 @@ pub async fn promote_learned(
     }
 
     Ok(HttpResponse::Created().finish())
+}
+
+#[delete("/api/learned/{id}")]
+pub async fn delete_learned(
+    state: Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> Result<HttpResponse, ApiError> {
+    let pool = &state.pool;
+    let token = auth::require_token(&req, pool).await?;
+    let learned_id = path.into_inner();
+
+    let result = sqlx::query("DELETE FROM learned_commands WHERE id = $1 AND owner_token = $2")
+        .bind(learned_id)
+        .bind(token.id)
+        .execute(pool)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(ApiError::NotFound);
+    }
+
+    Ok(HttpResponse::NoContent().finish())
 }
 
 #[post("/api/device-codes")]

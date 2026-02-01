@@ -61,6 +61,7 @@ async fn main() -> std::io::Result<()> {
             .service(routes::suggest_commands)
             .service(routes::learn_command)
             .service(routes::list_learned)
+            .service(routes::delete_learned)
             .service(routes::promote_learned)
             .service(routes::create_device_code)
             .service(routes::exchange_token)

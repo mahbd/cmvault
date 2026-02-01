@@ -107,8 +107,9 @@ export async function deleteCommand(id: string): Promise<void> {
   await request<void>(`/api/commands/${id}`, { method: 'DELETE' });
 }
 
-export async function fetchLearned(options?: { limit?: number; offset?: number }): Promise<Page<LearnedCommand>> {
+export async function fetchLearned(options?: { search?: string; limit?: number; offset?: number }): Promise<Page<LearnedCommand>> {
   const qs = new URLSearchParams();
+  if (options?.search) qs.set('q', options.search);
   if (options?.limit) qs.set('limit', String(options.limit));
   if (options?.offset) qs.set('offset', String(options.offset));
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
@@ -128,6 +129,10 @@ export async function promoteLearned(id: string, payload: PromotePayload): Promi
     method: 'POST',
     body: JSON.stringify(payload)
   });
+}
+
+export async function deleteLearned(id: string): Promise<void> {
+  await request<void>(`/api/learned/${id}`, { method: 'DELETE' });
 }
 
 export interface DeviceCodeResponse {
